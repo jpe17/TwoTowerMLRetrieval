@@ -1,0 +1,21 @@
+{
+    "TRAIN_DATASET_PATH": "../data/ms_marco_train.parquet",
+    "VAL_DATASET_PATH": "../data/ms_marco_validation.parquet", 
+    "TEST_DATASET_PATH": "../data/ms_marco_test.parquet",
+    "MAX_SAMPLES_TRAIN": 10000,
+    "MAX_SAMPLES_VAL": 1000,
+    "MAX_SAMPLES_TEST": 1000,
+    "EMBEDDINGS_PATH": "../data/embeddings.npy",
+    "WORD_TO_IDX_PATH": "../data/word_to_idx.pkl",
+    "HIDDEN_DIM": 128,
+    "MARGIN": 1.0,
+    "LR": 0.001,
+    "BATCH_SIZE": 2,
+    "EPOCHS": 10,
+    "DEVICE": "cuda",
+    "TOTAL_SAMPLES": 50000,
+    "TRAIN_SPLIT": 0.7,
+    "TEST_SPLIT": 0.2,
+    "VALIDATION_SPLIT": 0.1
+} 
+
