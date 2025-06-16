@@ -17,7 +17,7 @@ matplotlib
 
 # Utilities
 python-dotenv
-streamlit==1.29.0
+streamlit
 
 # Jupyter
 ipykernel
