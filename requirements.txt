@@ -27,3 +27,4 @@ torch
 # Data
 datasets
 pyarrow
+fastparquet
