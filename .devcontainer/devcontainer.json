@@ -1,0 +1,22 @@
+{
+    "name": "Python Environment",
+    "dockerFile": "Dockerfile",
+    "context": "..",
+    "containerEnv": {
+        "JUPYTER_PATH": "/workspace",
+        "PYTHONPATH": "/workspace"
+    },
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "type=bind,source=${localWorkspaceFolder},target=/workspace,consistency=cached",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-toolsai.jupyter",
+                "ms-azuretools.vscode-docker"
+            ]
+        }
+    },
+    "forwardPorts": [8888],
+    "remoteUser": "vscode"
+} 
