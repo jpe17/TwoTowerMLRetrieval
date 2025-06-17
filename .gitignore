@@ -4,4 +4,6 @@ artifacts/
 scratch/
 .env
 wandb/
-*__pycache__*
+backend/__pycache__
+venv/
+
