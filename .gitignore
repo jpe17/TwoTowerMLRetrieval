@@ -5,3 +5,4 @@ scratch/
 .env
 wandb/
 backend/__pycache__/
+venv/
