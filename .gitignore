@@ -4,3 +4,4 @@ artifacts/
 scratch/
 .env
 wandb/
+*__pycache__*
