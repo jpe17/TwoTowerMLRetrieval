@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from typing import Tuple, Optional, Callable
-
+import json
 
 class RNNEncoder(nn.Module):
     """RNN Encoder for text encoding in the two-tower architecture."""
@@ -76,7 +76,7 @@ class RNNEncoder(nn.Module):
             x: Input tensor of shape (batch_size, sequence_length)
             
         Returns:
-            Encoded representation of shape (batch_size, hidden_dim)
+            L2-normalized encoded representation of shape (batch_size, hidden_dim)
         """
         # Embedding layer
         x = self.embedding(x)  # (batch_size, seq_len, embed_dim)
@@ -88,7 +88,10 @@ class RNNEncoder(nn.Module):
             _, h_n = self.rnn(x)  # h_n: (num_layers, batch_size, hidden_dim)
         
         # Use the last layer's hidden state
-        return h_n[-1]  # (batch_size, hidden_dim)
+        hidden = h_n[-1]  # (batch_size, hidden_dim)
+        
+        # L2 normalize embeddings to unit sphere
+        return F.normalize(hidden, p=2, dim=1)
 
 
 class TwoTowerModel(nn.Module):
@@ -217,7 +220,7 @@ class ModelFactory:
         return TwoTowerModel(
             vocab_size=config.get('VOCAB_SIZE'),
             embed_dim=config.get('EMBED_DIM'),
-            hidden_dim=config.get('HIDDEN_DIM', 128),
+            hidden_dim=config.get('HIDDEN_DIM', config.get('HIDDEN_DIM')),
             pretrained_embeddings=pretrained_embeddings,
             shared_encoder=config.get('SHARED_ENCODER', False),
             rnn_type=config.get('RNN_TYPE', 'GRU'),

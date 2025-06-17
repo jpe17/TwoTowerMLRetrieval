@@ -36,13 +36,71 @@ class TwoTowerTrainer:
         
         # Training configuration
         self.gradient_accumulation_steps = config.get('GRADIENT_ACCUMULATION_STEPS', 1)
-        self.memory_cleanup_frequency = config.get('MEMORY_CLEANUP_FREQUENCY', 100)
+        self.memory_cleanup_frequency = config.get('MEMORY_CLEANUP_FREQUENCY', 500)
         
         # Training history
         self.train_losses = []
         self.val_losses = []
         self.best_val_loss = float('inf')
         self.best_model_state = None
+        
+        # Training metrics history
+        self.train_metrics_history = []
+        self.val_metrics_history = []
+    
+    def compute_batch_metrics(self, q_vec, pos_vec, neg_vec):
+        """
+        Compute training metrics for a batch that can be tracked in real-time.
+        
+        Args:
+            q_vec: Query embeddings [batch_size, hidden_dim] (L2 normalized)
+            pos_vec: Positive document embeddings [batch_size, hidden_dim] (L2 normalized)
+            neg_vec: Negative document embeddings [batch_size, hidden_dim] (L2 normalized)
+            
+        Returns:
+            Dictionary of metrics
+        """
+        with torch.no_grad():
+            # Since embeddings are L2 normalized, dot product = cosine similarity (but faster)
+            pos_sim = (q_vec * pos_vec).sum(dim=1)  # [batch_size]
+            neg_sim = (q_vec * neg_vec).sum(dim=1)  # [batch_size]
+            
+            # Triplet Accuracy: How many triplets have pos_sim > neg_sim
+            triplet_acc = (pos_sim > neg_sim).float().mean().item()
+            
+            # Margin Violations: How many have neg_sim > pos_sim - margin
+            margin = self.config.get('MARGIN', 1.0)
+            margin_violations = (neg_sim > pos_sim - margin).float().mean().item()
+            
+            # Average similarities
+            avg_pos_sim = pos_sim.mean().item()
+            avg_neg_sim = neg_sim.mean().item()
+            
+            # Similarity gap (higher is better)
+            sim_gap = (pos_sim - neg_sim).mean().item()
+            
+            # Distance ratio (pos/neg - higher means positive is relatively better)
+            pos_dist = 1 - pos_sim  # Convert similarity to distance
+            neg_dist = 1 - neg_sim
+            # Avoid division by zero
+            dist_ratio = (neg_dist / (pos_dist + 1e-8)).mean().item()
+            
+            # Embedding magnitude check (should be close to 1.0 after L2 normalization)
+            q_magnitude = q_vec.norm(dim=1).mean().item()
+            pos_magnitude = pos_vec.norm(dim=1).mean().item()
+            neg_magnitude = neg_vec.norm(dim=1).mean().item()
+            
+            return {
+                'triplet_accuracy': triplet_acc,
+                'margin_violations': margin_violations,
+                'avg_pos_similarity': avg_pos_sim,
+                'avg_neg_similarity': avg_neg_sim,
+                'similarity_gap': sim_gap,
+                'distance_ratio': dist_ratio,
+                'query_magnitude': q_magnitude,
+                'pos_magnitude': pos_magnitude,
+                'neg_magnitude': neg_magnitude
+            }
     
     def train_epoch(self, train_loader: DataLoader, epoch: int) -> float:
         """
@@ -60,6 +118,19 @@ class TwoTowerTrainer:
         num_batches = 0
         accumulation_loss = 0
         
+        # Metrics accumulation
+        epoch_metrics = {
+            'triplet_accuracy': 0,
+            'margin_violations': 0,
+            'avg_pos_similarity': 0,
+            'avg_neg_similarity': 0,
+            'similarity_gap': 0,
+            'distance_ratio': 0,
+            'query_magnitude': 0,
+            'pos_magnitude': 0,
+            'neg_magnitude': 0
+        }
+        
         epoch_start = time.time()
         
         for batch_idx, (query_batch, pos_batch, neg_batch) in enumerate(train_loader):
@@ -75,6 +146,13 @@ class TwoTowerTrainer:
                 neg_vec = self.model.encode_document(neg_batch)
 
                 loss = self.loss_function((q_vec, pos_vec, neg_vec))
+                
+                # Compute batch metrics
+                batch_metrics = self.compute_batch_metrics(q_vec, pos_vec, neg_vec)
+                
+                # Accumulate metrics
+                for key, value in batch_metrics.items():
+                    epoch_metrics[key] += value
                 
                 # Scale loss for gradient accumulation
                 loss = loss / self.gradient_accumulation_steps
@@ -97,7 +175,11 @@ class TwoTowerTrainer:
                 # Progress indicator and memory management
                 if num_batches % 50 == 0:
                     current_loss = loss.item() * self.gradient_accumulation_steps
-                    print(f"  Epoch {epoch+1}, Batch {num_batches}/{len(train_loader)}, Loss: {current_loss:.4f}")
+                    current_acc = batch_metrics['triplet_accuracy']
+                    current_gap = batch_metrics['similarity_gap']
+                    current_mag = batch_metrics['query_magnitude']
+                    print(f"  Epoch {epoch+1}, Batch {num_batches}/{len(train_loader)}, "
+                          f"Loss: {current_loss:.4f}, Acc: {current_acc:.3f}, Gap: {current_gap:.3f}, Mag: {current_mag:.3f}")
                 
                 # Periodic memory cleanup
                 if num_batches % self.memory_cleanup_frequency == 0:
@@ -122,11 +204,38 @@ class TwoTowerTrainer:
             self.optimizer.zero_grad()
             total_loss += accumulation_loss * self.gradient_accumulation_steps
         
+        # Average metrics over epoch
+        for key in epoch_metrics:
+            epoch_metrics[key] /= max(num_batches, 1)
+        
         epoch_time = time.time() - epoch_start
         avg_loss = total_loss / max(num_batches, 1)
         
-        print(f"✅ Epoch {epoch+1} completed: Avg Loss: {avg_loss:.4f}, Time: {epoch_time:.1f}s")
-        wandb.log({"train_loss": avg_loss, "epoch": epoch + 1})  # <--- Add this line
+        # Store metrics
+        self.train_metrics_history.append(epoch_metrics.copy())
+        
+        print(f"✅ Epoch {epoch+1} completed:")
+        print(f"   Loss: {avg_loss:.4f}, Time: {epoch_time:.1f}s")
+        print(f"   Triplet Accuracy: {epoch_metrics['triplet_accuracy']:.3f}")
+        print(f"   Similarity Gap: {epoch_metrics['similarity_gap']:.3f}")
+        print(f"   Margin Violations: {epoch_metrics['margin_violations']:.3f}")
+        
+        # Log to WandB
+        wandb_log = {
+            "train_loss": avg_loss,
+            "epoch": epoch + 1,
+            "train_triplet_accuracy": epoch_metrics['triplet_accuracy'],
+            "train_margin_violations": epoch_metrics['margin_violations'],
+            "train_avg_pos_similarity": epoch_metrics['avg_pos_similarity'],
+            "train_avg_neg_similarity": epoch_metrics['avg_neg_similarity'],
+            "train_similarity_gap": epoch_metrics['similarity_gap'],
+            "train_distance_ratio": epoch_metrics['distance_ratio'],
+            "train_query_magnitude": epoch_metrics['query_magnitude'],
+            "train_pos_magnitude": epoch_metrics['pos_magnitude'],
+            "train_neg_magnitude": epoch_metrics['neg_magnitude']
+        }
+        wandb.log(wandb_log)
+        
         return avg_loss
     
     def validate_epoch(self, val_loader: DataLoader, epoch: int) -> float:
@@ -144,6 +253,19 @@ class TwoTowerTrainer:
         total_loss = 0
         num_batches = 0
         
+        # Metrics accumulation
+        epoch_metrics = {
+            'triplet_accuracy': 0,
+            'margin_violations': 0,
+            'avg_pos_similarity': 0,
+            'avg_neg_similarity': 0,
+            'similarity_gap': 0,
+            'distance_ratio': 0,
+            'query_magnitude': 0,
+            'pos_magnitude': 0,
+            'neg_magnitude': 0
+        }
+        
         with torch.no_grad():
             for batch_idx, (query_batch, pos_batch, neg_batch) in enumerate(val_loader):
                 try:
@@ -159,6 +281,14 @@ class TwoTowerTrainer:
 
                     loss = self.loss_function((q_vec, pos_vec, neg_vec))
                     total_loss += loss.item()
+                    
+                    # Compute batch metrics
+                    batch_metrics = self.compute_batch_metrics(q_vec, pos_vec, neg_vec)
+                    
+                    # Accumulate metrics
+                    for key, value in batch_metrics.items():
+                        epoch_metrics[key] += value
+                    
                     num_batches += 1
                     
                     # Clear intermediate tensors
@@ -172,11 +302,38 @@ class TwoTowerTrainer:
                     else:
                         raise e
         
-        avg_loss = total_loss / max(num_batches, 1)
-        print(f"📊 Validation - Epoch {epoch+1}: Avg Loss: {avg_loss:.4f}")
-        wandb.log({"val_loss": avg_loss, "epoch": epoch + 1}) 
+        # Average metrics over epoch
+        for key in epoch_metrics:
+            epoch_metrics[key] /= max(num_batches, 1)
         
-        # Save best model
+        avg_loss = total_loss / max(num_batches, 1)
+        
+        # Store metrics
+        self.val_metrics_history.append(epoch_metrics.copy())
+        
+        print(f"📊 Validation - Epoch {epoch+1}:")
+        print(f"   Loss: {avg_loss:.4f}")
+        print(f"   Triplet Accuracy: {epoch_metrics['triplet_accuracy']:.3f}")
+        print(f"   Similarity Gap: {epoch_metrics['similarity_gap']:.3f}")
+        print(f"   Margin Violations: {epoch_metrics['margin_violations']:.3f}")
+        
+        # Log to WandB
+        wandb_log = {
+            "val_loss": avg_loss,
+            "epoch": epoch + 1,
+            "val_triplet_accuracy": epoch_metrics['triplet_accuracy'],
+            "val_margin_violations": epoch_metrics['margin_violations'],
+            "val_avg_pos_similarity": epoch_metrics['avg_pos_similarity'],
+            "val_avg_neg_similarity": epoch_metrics['avg_neg_similarity'],
+            "val_similarity_gap": epoch_metrics['similarity_gap'],
+            "val_distance_ratio": epoch_metrics['distance_ratio'],
+            "val_query_magnitude": epoch_metrics['query_magnitude'],
+            "val_pos_magnitude": epoch_metrics['pos_magnitude'],
+            "val_neg_magnitude": epoch_metrics['neg_magnitude']
+        }
+        wandb.log(wandb_log)
+        
+        # Save best model (you can choose between loss or other metrics)
         if avg_loss < self.best_val_loss:
             self.best_val_loss = avg_loss
             self.best_model_state = {
@@ -184,7 +341,8 @@ class TwoTowerTrainer:
                 'doc_encoder_state_dict': self.model.doc_encoder.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 'epoch': epoch,
-                'val_loss': avg_loss
+                'val_loss': avg_loss,
+                'val_metrics': epoch_metrics.copy()
             }
             print(f"🌟 New best validation loss: {avg_loss:.4f}")
         

@@ -33,12 +33,32 @@ class TripletDataset(Dataset):
 
 
 def collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Collate function for batching variable-length sequences."""
+    """Collate function for batching variable-length sequences with LEFT padding."""
     queries, pos_docs, neg_docs = zip(*batch)
+    
+    def left_pad_sequences(sequences):
+        """Pad sequences on the left (beginning) instead of right."""
+        # Find the maximum length
+        max_len = max(len(seq) for seq in sequences)
+        
+        # Create padded tensors
+        padded = []
+        for seq in sequences:
+            if len(seq) < max_len:
+                # Create padding of zeros at the beginning
+                padding = torch.zeros(max_len - len(seq), dtype=seq.dtype)
+                padded_seq = torch.cat([padding, seq])
+            else:
+                padded_seq = seq
+            padded.append(padded_seq)
+        
+        # Stack into a batch tensor
+        return torch.stack(padded)
+    
     return (
-        pad_sequence(queries, batch_first=True, padding_value=0),
-        pad_sequence(pos_docs, batch_first=True, padding_value=0),
-        pad_sequence(neg_docs, batch_first=True, padding_value=0)
+        left_pad_sequences(queries),
+        left_pad_sequences(pos_docs), 
+        left_pad_sequences(neg_docs)
     )
 
 
@@ -69,9 +89,8 @@ class DataLoaderFactory:
                 dataset,
                 batch_size=batch_size,
                 shuffle=(split == 'train'),
-                num_workers=0,
+                num_workers=2 if split == 'train' else 1,  # More workers for training
                 collate_fn=collate_fn,
-                pin_memory=False,
                 drop_last=(split == 'train')
             )
             
