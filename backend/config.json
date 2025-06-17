@@ -4,6 +4,7 @@
     "TEST_DATASET_PATH": "data/ms_marco_test.parquet",
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
+    "NUM_TRIPLETS_PER_QUERY": 1,
     "HIDDEN_DIM": 128,
     "MARGIN": 1.0,
     "LR": 0.001,
