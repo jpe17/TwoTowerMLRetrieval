@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple, Optional
 from torch.utils.data import DataLoader
 from model import TwoTowerModel, ModelFactory
 from utils import clean_memory, get_memory_usage
-
+import wandb
 
 class TwoTowerTrainer:
     """Trainer class for the Two-Tower model with comprehensive training, validation, and testing."""
@@ -126,7 +126,7 @@ class TwoTowerTrainer:
         avg_loss = total_loss / max(num_batches, 1)
         
         print(f"✅ Epoch {epoch+1} completed: Avg Loss: {avg_loss:.4f}, Time: {epoch_time:.1f}s")
-        
+        wandb.log({"train_loss": avg_loss, "epoch": epoch + 1})  # <--- Add this line
         return avg_loss
     
     def validate_epoch(self, val_loader: DataLoader, epoch: int) -> float:
@@ -174,6 +174,7 @@ class TwoTowerTrainer:
         
         avg_loss = total_loss / max(num_batches, 1)
         print(f"📊 Validation - Epoch {epoch+1}: Avg Loss: {avg_loss:.4f}")
+        wandb.log({"val_loss": avg_loss, "epoch": epoch + 1}) 
         
         # Save best model
         if avg_loss < self.best_val_loss:
