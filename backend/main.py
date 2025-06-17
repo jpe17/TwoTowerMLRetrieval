@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import os
 import wandb
 
+
 load_dotenv()  # Loads .env file
 
 wandb.login(key=os.getenv("WANDB_API_KEY"))
@@ -27,7 +28,7 @@ from tokenizer import PretrainedTokenizer
 from dataset import DataLoaderFactory
 from model import TwoTowerModel, ModelFactory
 from trainer import TrainerFactory
-from evaluator import TwoTowerEvaluator
+from evaluator import SimpleEvaluator
 from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
     load_pretrained_embeddings, save_model_artifacts, print_model_summary
@@ -127,20 +128,53 @@ def main():
 
     print(f"\n✅ Training completed! Artifacts saved to: {artifacts_path}")
 
-    # Get best model for evaluation
-    best_model = trainer.get_model_for_inference()
-
-    # Run evaluation
+    # Demo the evaluator with actual data
     if 'test' in datasets and datasets['test']:
-        print("\n🔍 Running comprehensive evaluation...")
-        evaluator = TwoTowerEvaluator(best_model, tokenizer, device)
-
-        # Retrieval evaluation
-        eval_metrics = evaluator.evaluate_retrieval(
-            test_data=datasets['test'][:500],  # Sample for faster evaluation
-            num_samples=config.get('NUM_SAMPLES_EVAL'),
-            num_distractors=config.get('NUM_DISTRACTORS_EVAL')
+        print("\n🔍 Running evaluator demo...")
+        
+        # Get the trained model for evaluation
+        best_model = trainer.get_model_for_inference()
+        evaluator = SimpleEvaluator(best_model, tokenizer, device)
+        
+        # Extract documents from test data for demo
+        test_sample = datasets['test'][:50]  # Use first 50 test samples
+        all_docs = []
+        test_queries = []
+        positive_docs = {}
+        
+        for query, pos_doc, neg_doc in test_sample:
+            all_docs.extend([pos_doc, neg_doc])
+            if query not in test_queries:
+                test_queries.append(query)
+                positive_docs[query] = [pos_doc]
+            else:
+                positive_docs[query].append(pos_doc)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_docs = []
+        for doc in all_docs:
+            if doc not in seen:
+                seen.add(doc)
+                unique_docs.append(doc)
+        
+        # 1. Query evaluation demo
+        if test_queries:
+            demo_query = test_queries[0]
+            results = evaluator.evaluate_query(
+                query=demo_query,
+                documents=unique_docs,
+                positive_docs=positive_docs[demo_query]
+            )
+            evaluator.print_query_results(demo_query, results)
+        
+        # 2. Similarity search demo
+        demo_text = "What is the capital of France?"
+        similar_docs = evaluator.search_similar(
+            text=demo_text,
+            documents=unique_docs[:20]  # Use subset for demo
         )
+        evaluator.print_search_results(demo_text, similar_docs)
 
     print("\n🎉 Pipeline completed successfully!")
 
