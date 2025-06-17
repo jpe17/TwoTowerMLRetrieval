@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from typing import List, Tuple, Dict
-from .tokenizer import PretrainedTokenizer
+from tokenizer import PretrainedTokenizer
 
 
 class TripletDataset(Dataset):

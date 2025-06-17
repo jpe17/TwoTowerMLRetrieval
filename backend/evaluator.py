@@ -6,9 +6,9 @@ from typing import List, Tuple, Dict, Optional
 from collections import defaultdict
 from torch.nn.utils.rnn import pad_sequence
 
-from .model import TwoTowerModel
-from .tokenizer import PretrainedTokenizer
-from .utils import clean_memory
+from model import TwoTowerModel
+from tokenizer import PretrainedTokenizer
+from utils import clean_memory
 
 
 class TwoTowerEvaluator:
