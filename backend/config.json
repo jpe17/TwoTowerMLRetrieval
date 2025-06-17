@@ -13,6 +13,6 @@
     "DEVICE": "mps",
     "NUM_SAMPLES_EVAL": 100,
     "NUM_DISTRACTORS_EVAL": 20,
-    "SUBSAMPLE_RATIO": 0.001
+    "SUBSAMPLE_RATIO": 0.01
 } 
 
