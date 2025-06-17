@@ -1,3 +1,4 @@
 data/
 data/glove.6B.200d.txt
 artifacts/
+scratch/
