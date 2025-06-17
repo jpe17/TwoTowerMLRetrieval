@@ -15,6 +15,8 @@ class DataLoader:
     def load_and_process_parquet(self, path: str, subsample_ratio: Optional[float] = None) -> List[Tuple[str, str, str]]:
         """
         Load a parquet file and create triplets with correct positive/negative logic.
+        For each query, use each passage in the row as a positive (up to num_triplets_per_query),
+        and sample a negative from another query for each.
         
         Args:
             path: Path to the parquet file
@@ -48,19 +50,23 @@ class DataLoader:
                 all_passages.append((idx, p))  # tag with query index for filtering later
 
         triplets = []
+        rng = random.Random(42)  # deterministic for reproducibility
         for idx, row in df.iterrows():
             query = row['query']
             query_passages = row['passages.passage_text']
-
-            for _ in range(self.num_triplets_per_query): 
-                positive = random.choice(query_passages)
-
+            if not query_passages:
+                continue
+            # Use up to num_triplets_per_query passages as positives
+            num_pos = min(self.num_triplets_per_query, len(query_passages))
+            pos_indices = list(range(len(query_passages)))
+            rng.shuffle(pos_indices)
+            for i in range(num_pos):
+                positive = query_passages[pos_indices[i]]
                 # Negative must be from a *different* query
                 while True:
-                    neg_query_id, negative = random.choice(all_passages)
+                    neg_query_id, negative = rng.choice(all_passages)
                     if neg_query_id != idx:
                         break
-
                 triplets.append((query, positive, negative))
 
         print(f"  Generated {len(triplets):,} triplets.")
@@ -87,6 +93,7 @@ class DataLoader:
         for split, path in dataset_paths.items():
             try:
                 datasets[split] = self.load_and_process_parquet(path, subsample_ratio)
+                self.export_triplets(datasets[split], 'data/triplets_sample.tsv')
             except Exception as e:
                 print(f"❌ Error loading {split} dataset from {path}: {str(e)}")
                 datasets[split] = []
@@ -105,3 +112,18 @@ class DataLoader:
             
         stats['total'] = total
         return stats 
+    
+    def export_triplets(self, triplets: List[Tuple[str, str, str]], output_path: str):
+        """
+        Export triplets to a TSV file for inspection.
+        Args:
+            triplets: List of (query, positive, negative) tuples
+            output_path: Path to the output file
+        """
+        import csv
+        with open(output_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f, delimiter='\t')
+            writer.writerow(['query', 'positive', 'negative'])
+            for triplet in triplets:
+                writer.writerow(triplet)
+        print(f"Exported {len(triplets)} triplets to {output_path}")
