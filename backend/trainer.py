@@ -3,8 +3,8 @@ import torch.nn.functional as F
 import time
 from typing import Dict, List, Tuple, Optional
 from torch.utils.data import DataLoader
-from .model import TwoTowerModel, ModelFactory
-from .utils import clean_memory, get_memory_usage
+from model import TwoTowerModel, ModelFactory
+from utils import clean_memory, get_memory_usage
 
 
 class TwoTowerTrainer:
