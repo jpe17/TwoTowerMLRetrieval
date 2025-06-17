@@ -10,7 +10,7 @@
     "BATCH_SIZE": 64,
     "EPOCHS": 10,
     "DEVICE": "cuda",
-    "TOTAL_SAMPLES": 100000,
+    "TOTAL_SAMPLES": 1000,
     "TRAIN_SPLIT": 0.7,
     "TEST_SPLIT": 0.2,
     "VALIDATION_SPLIT": 0.1
