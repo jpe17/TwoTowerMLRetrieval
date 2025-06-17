@@ -1,7 +1,7 @@
 import pandas as pd
 import fastparquet
 import random
-import numpy as np
+import csv
 from typing import List, Tuple, Dict, Optional
 
 
@@ -13,95 +13,81 @@ class DataLoader:
         self.num_triplets_per_query = config.get('NUM_TRIPLETS_PER_QUERY', 1)
     
     def load_and_process_parquet(self, path: str, subsample_ratio: Optional[float] = None) -> List[Tuple[str, str, str]]:
-        """
-        Load a parquet file and create triplets with correct positive/negative logic.
-        
-        Args:
-            path: Path to the parquet file
-            subsample_ratio: Optional ratio to subsample the data (0.0 < ratio <= 1.0)
-            
-        Returns:
-            List of triplets (query, positive_doc, negative_doc)
-        """
+        """Load parquet file and create triplets (query, positive, negative)."""
         print(f"\nProcessing {path}...")
         df = pd.read_parquet(path, engine='fastparquet')
         
         # Apply subsampling if specified
-        if subsample_ratio is not None and 0 < subsample_ratio < 1.0:
+        if subsample_ratio and 0 < subsample_ratio < 1.0:
             original_size = len(df)
             df = df.sample(frac=subsample_ratio, random_state=42).reset_index(drop=True)
-            print(f"  Subsampled from {original_size:,} to {len(df):,} queries (ratio: {subsample_ratio})")
+            print(f"  Subsampled from {original_size:,} to {len(df):,} queries")
 
-        # Filter for valid rows: keep queries that have at least one passage
-        valid_mask = (
-            df['query'].notna() & 
-            df['passages.passage_text'].notna() &
-            df['passages.passage_text'].apply(lambda x: len(x) > 0 if isinstance(x, list) else False)
-        )
+        # Filter valid rows with non-empty passages
+        valid_mask = (df['query'].notna() & 
+                     df['passages.passage_text'].notna() &
+                     df['passages.passage_text'].apply(lambda x: len(x) > 0 if isinstance(x, list) else False))
         df = df[valid_mask].reset_index(drop=True)
         print(f"  Found {len(df):,} valid queries after filtering.")
 
-        # Create a flat list of (query_id, passage) for negative sampling
-        all_passages = []
-        for idx, row in df.iterrows():
-            for p in row['passages.passage_text']:
-                all_passages.append((idx, p))  # tag with query index for filtering later
+        # Create passage pool for negative sampling
+        all_passages = [(idx, p) for idx, row in df.iterrows() 
+                       for p in row['passages.passage_text']]
 
+        # Generate triplets
         triplets = []
+        rng = random.Random(42)
         for idx, row in df.iterrows():
             query = row['query']
-            query_passages = row['passages.passage_text']
-
-            for _ in range(self.num_triplets_per_query): 
-                positive = random.choice(query_passages)
-
-                # Negative must be from a *different* query
+            passages = row['passages.passage_text']
+            if not passages:
+                continue
+                
+            # Sample positive passages
+            num_pos = min(self.num_triplets_per_query, len(passages))
+            pos_indices = random.Random(42).sample(range(len(passages)), num_pos)
+            
+            for i in pos_indices:
+                positive = passages[i]
+                # Sample negative from different query
                 while True:
-                    neg_query_id, negative = random.choice(all_passages)
+                    neg_query_id, negative = rng.choice(all_passages)
                     if neg_query_id != idx:
                         break
-
                 triplets.append((query, positive, negative))
 
         print(f"  Generated {len(triplets):,} triplets.")
         return triplets
     
     def load_datasets(self, subsample_ratio: Optional[float] = None) -> Dict[str, List[Tuple[str, str, str]]]:
-        """
-        Load all datasets (train, validation, test).
-        
-        Args:
-            subsample_ratio: Optional ratio to subsample each dataset
-            
-        Returns:
-            Dictionary with 'train', 'validation', 'test' keys containing triplet lists
-        """
+        """Load train, validation, and test datasets."""
         datasets = {}
-        
-        dataset_paths = {
+        paths = {
             'train': self.config['TRAIN_DATASET_PATH'],
             'validation': self.config['VAL_DATASET_PATH'],
             'test': self.config['TEST_DATASET_PATH']
         }
         
-        for split, path in dataset_paths.items():
+        for split, path in paths.items():
             try:
                 datasets[split] = self.load_and_process_parquet(path, subsample_ratio)
+                self.export_triplets(datasets[split], 'data/triplets_sample.tsv')
             except Exception as e:
-                print(f"❌ Error loading {split} dataset from {path}: {str(e)}")
+                print(f"❌ Error loading {split} dataset: {str(e)}")
                 datasets[split] = []
         
         return datasets
     
     def get_dataset_stats(self, datasets: Dict[str, List[Tuple[str, str, str]]]) -> Dict[str, int]:
-        """Get statistics about the loaded datasets."""
-        stats = {}
-        total = 0
-        
-        for split, data in datasets.items():
-            count = len(data)
-            stats[split] = count
-            total += count
-            
-        stats['total'] = total
-        return stats 
+        """Get dataset statistics."""
+        stats = {split: len(data) for split, data in datasets.items()}
+        stats['total'] = sum(stats.values())
+        return stats
+    
+    def export_triplets(self, triplets: List[Tuple[str, str, str]], output_path: str):
+        """Export triplets to TSV file."""
+        with open(output_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f, delimiter='\t')
+            writer.writerow(['query', 'positive', 'negative'])
+            writer.writerows(triplets)
+        print(f"Exported {len(triplets)} triplets to {output_path}")

@@ -4,16 +4,15 @@
     "TEST_DATASET_PATH": "data/ms_marco_test.parquet",
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
-    "NUM_TRIPLETS_PER_QUERY": 1,
+    "NUM_TRIPLETS_PER_QUERY": 10,
     "HIDDEN_DIM": 128,
     "MARGIN": 1.0,
     "LR": 0.001,
     "BATCH_SIZE": 64,
     "EPOCHS": 10,
-    "DEVICE": "cuda",
-    "TOTAL_SAMPLES": 1000,
-    "TRAIN_SPLIT": 0.7,
-    "TEST_SPLIT": 0.2,
-    "VALIDATION_SPLIT": 0.1
+    "DEVICE": "mps",
+    "NUM_SAMPLES_EVAL": 100,
+    "NUM_DISTRACTORS_EVAL": 20,
+    "SUBSAMPLE_RATIO": 0.01
 } 
 
