@@ -8,6 +8,7 @@
     },
     "workspaceFolder": "/workspace",
     "workspaceMount": "type=bind,source=${localWorkspaceFolder},target=/workspace,consistency=cached",
+    "runArgs": ["--gpus", "all"],
     "customizations": {
         "vscode": {
             "extensions": [
