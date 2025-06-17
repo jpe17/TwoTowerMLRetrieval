@@ -10,6 +10,14 @@ import argparse
 import sys
 import torch
 from pathlib import Path
+from dotenv import load_dotenv
+import os
+import wandb
+
+load_dotenv()  # Loads .env file
+
+wandb.login(key=os.getenv("WANDB_API_KEY"))
+wandb.init(project="two-tower-ml-retrieval")  # Set your project name
 
 # Add backend to path for imports
 sys.path.append(str(Path(__file__).parent))
