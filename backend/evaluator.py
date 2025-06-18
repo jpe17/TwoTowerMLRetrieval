@@ -8,6 +8,11 @@ from torch.nn.utils.rnn import pad_sequence
 from model import TwoTowerModel
 from tokenizer import PretrainedTokenizer
 
+import pandas as pd
+from typing import Dict, Optional
+from sklearn.metrics import ndcg_score
+from collections import defaultdict
+
 
 class SimpleEvaluator:
     """Simple evaluator with query evaluation and text search capabilities."""
@@ -119,3 +124,147 @@ class SimpleEvaluator:
             print(f"{i:2d}. Score: {score:.4f}")
             print(f"    {doc[:100]}...")
             print() 
+
+
+class AdvancedEvaluator:
+    def __init__(self, model: TwoTowerModel, tokenizer: PretrainedTokenizer, device: torch.device, wandb_logger=None, top_k=10):
+
+        self.model = model
+        self.tokenizer = tokenizer
+        self.device = device
+        self.wandb_logger = wandb_logger
+        self.top_k = top_k
+        self.model.eval()
+
+    def encode_batch(self, texts: List[str]) -> torch.Tensor:
+        """Batch encode a list of texts into embeddings."""
+        tokens = [torch.tensor(self.tokenizer.encode(text), dtype=torch.long) for text in texts]
+        padded = pad_sequence(tokens, batch_first=True).to(self.device)
+        return self.model.encode_query(padded) if hasattr(self.model, 'encode_query') else self.model(padded)
+
+    def evaluate_batch(self, queries: List[str], documents: List[str], positive_docs_dict: Dict[str, List[str]],
+                      embeddings_path: Optional[str] = None) -> Tuple[Dict[str, float], List[Dict]]:
+        """
+        Evaluate a batch of queries against documents and return metrics and top results.
+
+        Args:
+            queries: List of query strings
+            documents: List of document strings
+            positive_docs_dict: Dict mapping query to list of correct document strings
+            embeddings_path: Optional path to precomputed document embeddings
+
+        Returns:
+            metrics: Dict of evaluation metrics
+            top_results: List of dicts with top results for each query
+        """
+        # Encode all queries
+        query_vecs = self.encode_batch(queries)
+
+        # Load or compute document embeddings
+        if embeddings_path and os.path.exists(embeddings_path):
+            doc_embeddings = torch.tensor(np.load(embeddings_path), device=self.device)
+        else:
+            doc_embeddings = self.encode_batch(documents)
+
+        # Compute cosine similarity: shape (num_queries, num_docs)
+        scores = F.cosine_similarity(query_vecs.unsqueeze(1), doc_embeddings.unsqueeze(0), dim=2)
+
+        # For each query, get top_k results and compute metrics
+        metrics = defaultdict(list)
+        top_results = []
+
+        for i, (query, query_scores) in enumerate(zip(queries, scores)):
+            # Get top_k indices and scores
+            top_scores, top_indices = torch.topk(query_scores, k=self.top_k, dim=0)
+            top_docs = [documents[idx.item()] for idx in top_indices]
+            top_scores = top_scores.tolist()
+
+            # Ground truth: 1 if doc is correct, 0 otherwise
+            relevant_set = set(positive_docs_dict.get(query, []))
+            ground_truth = [1 if doc in relevant_set else 0 for doc in documents]
+            pred_scores = query_scores.cpu().numpy()
+            pred_rank = (-pred_scores).argsort()  # argsort in descending order
+
+            # Compute metrics
+            # Precision@k
+            correct_in_top = sum(1 for doc in top_docs if doc in relevant_set)
+            precision_at_k = correct_in_top / self.top_k
+            metrics['precision@k'].append(precision_at_k)
+
+            # Recall@k
+            total_relevant = len(relevant_set)
+            recall_at_k = correct_in_top / max(total_relevant, 1)
+            metrics['recall@k'].append(recall_at_k)
+
+            # MRR
+            for rank, idx in enumerate(pred_rank, 1):
+                if ground_truth[idx]:
+                    mrr = 1.0 / rank
+                    metrics['mrr'].append(mrr)
+                    break
+
+            # NDCG (sklearn expects relevance scores as floats)
+            # Here, ground_truth is binary
+            ndcg = ndcg_score([ground_truth], [pred_scores], k=self.top_k)
+            metrics['ndcg@k'].append(ndcg)
+
+            # Store top results for this query
+            top_results.append({
+                'query': query,
+                'top_docs': top_docs,
+                'top_scores': top_scores,
+                'is_correct': [doc in relevant_set for doc in top_docs]
+            })
+
+        # Aggregate metrics
+        agg_metrics = {
+            'precision@k': np.mean(metrics['precision@k']),
+            'recall@k': np.mean(metrics['recall@k']),
+            'mrr': np.mean(metrics['mrr']) if metrics['mrr'] else 0.0,
+            'ndcg@k': np.mean(metrics['ndcg@k'])
+        }
+
+        # Log to wandb if logger is provided
+        if self.wandb_logger:
+            self.wandb_logger.log(agg_metrics)
+
+        return agg_metrics, top_results
+
+    def analyze_errors(self, results: List[Dict], positive_docs_dict: Dict[str, List[str]]) -> Dict:
+        """
+        Analyze errors in evaluation results.
+
+        Args:
+            results: List of dicts from evaluate_batch
+            positive_docs_dict: Dict mapping query to list of correct document strings
+
+        Returns:
+            error_stats: Dict with error analysis statistics
+        """
+        error_stats = {
+            'queries_with_no_correct_in_top': 0,
+            'queries_with_all_correct_missed': 0,
+            'total_queries': len(results)
+        }
+
+        for res in results:
+            query = res['query']
+            relevant_set = set(positive_docs_dict.get(query, []))
+            top_docs = res['top_docs']
+            is_correct = res['is_correct']
+
+            # Queries with no correct in top_k
+            if not any(is_correct):
+                error_stats['queries_with_no_correct_in_top'] += 1
+
+            # Queries where all correct were missed (if any correct exists)
+            if relevant_set and not any(doc in relevant_set for doc in top_docs):
+                error_stats['queries_with_all_correct_missed'] += 1
+
+        return error_stats
+
+    def print_metrics(self, metrics: Dict):
+        print("\n📊 Evaluation Metrics:")
+        print("-" * 40)
+        df = pd.DataFrame([metrics])
+        print(df.to_string(index=False))
