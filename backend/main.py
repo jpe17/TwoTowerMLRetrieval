@@ -26,7 +26,7 @@ from dataset import DataLoaderFactory
 from model import ModelFactory, TwoTowerModel
 from model_combined import MergedTripletModel, triplet_loss
 from trainer import TrainerFactory, TwoTowerTrainer
-from evaluator import SimpleEvaluator
+from evaluator import SimpleEvaluator, AdvancedEvaluator
 from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
     load_pretrained_embeddings, print_model_summary, load_model_artifacts,
