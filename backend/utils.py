@@ -37,7 +37,9 @@ def setup_memory_optimization():
 
 def clean_memory():
     """Aggressive memory cleaning for MPS/CUDA."""
-    gc.collect()  # Python garbage collection
+    # Multiple garbage collection passes
+    for _ in range(3):
+        gc.collect()
     
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -62,6 +64,14 @@ def get_memory_usage() -> str:
         # MPS doesn't have direct memory query methods
         return "MPS: Memory tracking not available"
     return "CPU: Memory tracking not available"
+
+
+def safe_del(*tensors):
+    """Safely delete tensors and clean memory."""
+    for tensor in tensors:
+        if tensor is not None:
+            del tensor
+    clean_memory()
 
 
 def load_config(config_path: str = 'backend/config.json') -> Dict[str, Any]:
@@ -113,7 +123,10 @@ def save_model_artifacts(
     epoch: int, 
     final_loss: float,
     datasets_stats: Dict[str, int],
-    artifacts_dir: str = "artifacts"
+    artifacts_dir: str = "artifacts",
+    save_doc_embeddings: bool = False,
+    datasets: Optional[Dict] = None,
+    tokenizer = None
 ) -> str:
     """
     Save model artifacts with timestamped directory.
@@ -126,6 +139,9 @@ def save_model_artifacts(
         final_loss: Final training loss
         datasets_stats: Dataset statistics
         artifacts_dir: Base directory for artifacts
+        save_doc_embeddings: Whether to save document embeddings during training
+        datasets: Dataset dictionaries (needed if save_doc_embeddings=True)
+        tokenizer: Tokenizer instance (needed if save_doc_embeddings=True)
         
     Returns:
         Path to the saved artifacts directory
@@ -140,15 +156,32 @@ def save_model_artifacts(
     
     print(f"💾 Saving artifacts to: {run_dir}")
     
-    # Save model state dictionaries
-    torch.save({
-        'query_encoder_state_dict': model.query_encoder.state_dict(),
-        'doc_encoder_state_dict': model.doc_encoder.state_dict(),
+    # Save model state dictionaries - handle different model types
+    checkpoint_data = {
         'optimizer_state_dict': optimizer.state_dict(),
         'epoch': epoch,
         'final_loss': final_loss,
         'config': config
-    }, os.path.join(run_dir, 'model_checkpoint.pth'))
+    }
+    
+    # Handle different model architectures
+    if hasattr(model, 'query_encoder') and hasattr(model, 'doc_encoder'):
+        # Two-tower model
+        checkpoint_data['query_encoder_state_dict'] = model.query_encoder.state_dict()
+        checkpoint_data['doc_encoder_state_dict'] = model.doc_encoder.state_dict()
+        checkpoint_data['model_type'] = 'two_tower'
+    elif hasattr(model, 'shared_encoder'):
+        # Merged/Ranking model
+        checkpoint_data['shared_encoder_state_dict'] = model.shared_encoder.state_dict()
+        if hasattr(model, 'classifier'):
+            checkpoint_data['classifier_state_dict'] = model.classifier.state_dict()
+        checkpoint_data['model_type'] = 'merged'
+    else:
+        # Fallback: save full model state dict
+        checkpoint_data['model_state_dict'] = model.state_dict()
+        checkpoint_data['model_type'] = 'unknown'
+    
+    torch.save(checkpoint_data, os.path.join(run_dir, 'model_checkpoint.pth'))
     
     # Save full model (for easy loading)
     torch.save(model, os.path.join(run_dir, 'full_model.pth'))
@@ -169,7 +202,8 @@ def save_model_artifacts(
             'batch_size': config.get('BATCH_SIZE', 64),
             'learning_rate': config.get('LR', 0.001),
             'device': str(config.get('DEVICE', 'cpu')),
-            'loss_type': config.get('LOSS_TYPE', 'triplet')
+            'loss_type': config.get('LOSS_TYPE', 'triplet'),
+            'task_mode': config.get('TASK_MODE', 'retrieval')
         },
         'data_config': {
             'subsample_ratio': config.get('SUBSAMPLE_RATIO'),
@@ -192,14 +226,104 @@ def save_model_artifacts(
     if os.path.exists(config.get('EMBEDDINGS_PATH', '')):
         shutil.copy2(config['EMBEDDINGS_PATH'], os.path.join(run_dir, 'embeddings.npy'))
     
+    # Save document embeddings if requested
+    if save_doc_embeddings and datasets and tokenizer:
+        print("🔢 Generating and saving document embeddings...")
+        _save_document_embeddings_during_training(model, datasets, tokenizer, run_dir, config)
+    
     print(f"✅ Saved artifacts:")
     print(f"  📁 Directory: {run_dir}")
     print(f"  🧠 Models: model_checkpoint.pth, full_model.pth")
     print(f"  ⚙️  Config: training_config.json")
     print(f"  📝 Tokenizer: word_to_idx.pkl")
     print(f"  🔢 Embeddings: embeddings.npy")
+    if save_doc_embeddings:
+        print(f"  📄 Document Embeddings: document_embeddings.npy, doc_to_idx.pkl")
     
     return run_dir
+
+
+def _save_document_embeddings_during_training(model, datasets, tokenizer, run_dir: str, config: Dict):
+    """
+    Helper function to save document embeddings during training.
+    
+    Args:
+        model: Trained model
+        datasets: Dictionary of datasets
+        tokenizer: Tokenizer instance
+        run_dir: Directory to save artifacts
+        config: Configuration dictionary
+    """
+    import torch
+    import numpy as np
+    from torch.nn.utils.rnn import pad_sequence
+    
+    # Collect unique documents from all datasets
+    all_documents = set()
+    for split_name, dataset in datasets.items():
+        if dataset:
+            for query, pos_doc, neg_doc in dataset:
+                all_documents.update([pos_doc, neg_doc])
+    
+    unique_docs = list(all_documents)
+    print(f"  Found {len(unique_docs):,} unique documents across all datasets")
+    
+    # Create document-to-index mapping
+    doc_to_idx = {doc: idx for idx, doc in enumerate(unique_docs)}
+    
+    # Encode documents in batches
+    model.eval()
+    device = next(model.parameters()).device
+    batch_size = config.get('BATCH_SIZE', 64)
+    doc_embeddings = []
+    
+    with torch.no_grad():
+        for i in range(0, len(unique_docs), batch_size):
+            if i % (batch_size * 10) == 0:
+                print(f"    Encoding batch {i//batch_size + 1}/{(len(unique_docs) + batch_size - 1)//batch_size}")
+            
+            batch_docs = unique_docs[i:i + batch_size]
+            
+            # Tokenize batch
+            batch_tokens = [
+                torch.tensor(tokenizer.encode(doc), dtype=torch.long)
+                for doc in batch_docs
+            ]
+            
+            if batch_tokens:
+                batch_tensor = pad_sequence(batch_tokens, batch_first=True).to(device)
+                
+                # Encode documents
+                if hasattr(model, 'encode_document'):
+                    embeddings = model.encode_document(batch_tensor)
+                elif hasattr(model, 'encode_text'):
+                    embeddings = model.encode_text(batch_tensor)
+                else:
+                    # Fallback for other model types
+                    embeddings = model.doc_encoder(batch_tensor)
+                
+                doc_embeddings.append(embeddings.cpu().numpy())
+    
+    # Combine all embeddings
+    if doc_embeddings:
+        all_doc_embeddings = np.vstack(doc_embeddings)
+        
+        # Save document embeddings
+        np.save(os.path.join(run_dir, 'document_embeddings.npy'), all_doc_embeddings)
+        
+        # Save document-to-index mapping
+        import pickle
+        with open(os.path.join(run_dir, 'doc_to_idx.pkl'), 'wb') as f:
+            pickle.dump(doc_to_idx, f)
+        
+        # Save document texts
+        with open(os.path.join(run_dir, 'documents.txt'), 'w', encoding='utf-8') as f:
+            for doc in unique_docs:
+                f.write(doc + '\n')
+        
+        print(f"  ✅ Saved {len(unique_docs):,} document embeddings ({all_doc_embeddings.shape})")
+    else:
+        print("  ⚠️  No document embeddings to save")
 
 
 def load_model_artifacts(artifacts_dir: str, device: Optional[torch.device] = None):
