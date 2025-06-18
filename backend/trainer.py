@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 import time
 import numpy as np
+import sys
 from typing import Dict, List, Optional
 from torch.utils.data import DataLoader
 from model import TwoTowerModel, ModelFactory
@@ -36,6 +37,28 @@ class TwoTowerTrainer:
         # Initialize WandB
         if not wandb.run:
             wandb.init(project="two-tower-ml-retrieval")
+    
+    def create_progress_bar(self, current, total, width=40, loss=None, accuracy=None, prefix=""):
+        """Create a visual progress bar with metrics."""
+        percent = float(current) / total
+        filled_width = int(width * percent)
+        
+        # Create the bar
+        bar = '█' * filled_width + '░' * (width - filled_width)
+        
+        # Format the output
+        percentage = percent * 100
+        progress_info = f"{current:4d}/{total:4d}"
+        
+        # Add metrics if provided
+        metrics_str = ""
+        if loss is not None and accuracy is not None:
+            metrics_str = f" │ Loss: {loss:6.4f} │ Acc: {accuracy:5.3f}"
+        
+        # Complete progress line
+        line = f"\r{prefix}[{bar}] {percentage:5.1f}% ({progress_info}){metrics_str}"
+        
+        return line
     
     def compute_triplet_metrics(self, query_emb, pos_emb, neg_emb):
         """Compute basic triplet metrics."""
@@ -160,6 +183,9 @@ class TwoTowerTrainer:
         epoch_metrics = {'accuracy': 0, 'similarity_gap': 0, 'embedding_magnitude': 0}
         batch_count = 0
         
+        total_batches = len(train_loader)
+        print(f"\n🚀 Epoch {epoch+1:2d} Progress:")
+        
         for batch_idx, (queries, pos_docs, neg_docs) in enumerate(train_loader):
             # Move to device
             queries = queries.to(self.device, non_blocking=True)
@@ -186,11 +212,20 @@ class TwoTowerTrainer:
                 epoch_metrics[key] += batch_metrics[key]
             batch_count += 1
             
-            # Progress logging every 50 batches
+            # Dynamic progress bar - update every batch
+            progress_bar = self.create_progress_bar(
+                current=batch_count,
+                total=total_batches,
+                loss=loss.item(),
+                accuracy=batch_metrics['accuracy'],
+                prefix="   "
+            )
+            print(progress_bar, end='', flush=True)
+            
+            # Detailed logging every 50 batches
             if batch_count % 50 == 0:
-                print(f"  Epoch {epoch+1}, Batch {batch_count}/{len(train_loader)}")
-                print(f"    Loss: {loss.item():.4f}, Acc: {batch_metrics['accuracy']:.3f}")
-                print(f"    Gap: {batch_metrics['similarity_gap']:.3f}, Mag: {batch_metrics['embedding_magnitude']:.3f}")
+                print(f"\n     ┌─ Gap:  {batch_metrics['similarity_gap']:7.3f} │ Magnitude: {batch_metrics['embedding_magnitude']:6.3f}")
+                print(f"     └─ Pos Sim: {batch_metrics['pos_similarity']:6.3f} │ Neg Sim: {batch_metrics['neg_similarity']:6.3f}")
                 
                 wandb.log({
                     "batch_loss": loss.item(),
@@ -205,8 +240,9 @@ class TwoTowerTrainer:
             if batch_count % 200 == 0 and val_loader is not None:
                 eval_metrics = self.evaluate_batch(val_loader)
                 
-                print(f"    📊 Retrieval - R@5: {eval_metrics.get('recall_at_5', 0):.3f}, R@10: {eval_metrics.get('recall_at_10', 0):.3f}")
-                print(f"    🎯 Ranking - MRR: {eval_metrics.get('mrr', 0):.3f}, NDCG@5: {eval_metrics.get('ndcg_at_5', 0):.3f}")
+                print(f"\n     🎯 EVALUATION METRICS at Batch {batch_count}")
+                print(f"     ┌─ Retrieval  │ R@5: {eval_metrics.get('recall_at_5', 0):6.3f} │ R@10: {eval_metrics.get('recall_at_10', 0):6.3f}")
+                print(f"     └─ Ranking   │ MRR: {eval_metrics.get('mrr', 0):6.3f} │ NDCG@5: {eval_metrics.get('ndcg_at_5', 0):6.3f}")
                 
                 # Log evaluation metrics to WandB
                 wandb_metrics = {f"batch_{k}": v for k, v in eval_metrics.items()}
@@ -214,13 +250,24 @@ class TwoTowerTrainer:
                 wandb.log(wandb_metrics)
                 
                 self.model.train()  # Back to training mode
+                print(f"   ", end="")  # Reset progress bar indentation
             
             # Memory cleanup
             if batch_count % 500 == 0:
                 clean_memory()
         
-        # Return epoch averages
+        # Complete the progress bar
         avg_loss = epoch_loss / batch_count
+        progress_bar = self.create_progress_bar(
+            current=total_batches,
+            total=total_batches,
+            loss=avg_loss,
+            accuracy=epoch_metrics['accuracy'] / batch_count,
+            prefix="   "
+        )
+        print(progress_bar)  # Final progress bar at 100%
+        
+        # Return epoch averages
         for key in epoch_metrics:
             epoch_metrics[key] /= batch_count
         
@@ -271,9 +318,12 @@ class TwoTowerTrainer:
             train_loss, train_metrics = self.train_epoch(train_loader, val_loader, epoch)
             self.train_losses.append(train_loss)
             
-            print(f"\n✅ Epoch {epoch+1} Training Complete:")
-            print(f"   Loss: {train_loss:.4f}, Acc: {train_metrics['accuracy']:.3f}")
-            print(f"   Gap: {train_metrics['similarity_gap']:.3f}, Mag: {train_metrics['embedding_magnitude']:.3f}")
+            print(f"\n{'='*60}")
+            print(f"✅ EPOCH {epoch+1:2d} TRAINING COMPLETE")
+            print(f"{'='*60}")
+            print(f"📊 Training Metrics:")
+            print(f"   ┌─ Loss:      {train_loss:8.4f} │ Accuracy:  {train_metrics['accuracy']:7.3f}")
+            print(f"   └─ Gap:       {train_metrics['similarity_gap']:8.3f} │ Magnitude: {train_metrics['embedding_magnitude']:7.3f}")
             
             # Validation
             wandb_log = {
