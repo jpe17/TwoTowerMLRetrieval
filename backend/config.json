@@ -1,6 +1,4 @@
 {
-    "_comment": "TASK_MODE can be 'retrieval' or 'ranking' to determine which model and training approach to use",
-    "TASK_MODE": "retrieval",
     "TRAIN_DATASET_PATH": "data/ms_marco_train.parquet",
     "VAL_DATASET_PATH": "data/ms_marco_validation.parquet", 
     "TEST_DATASET_PATH": "data/ms_marco_test.parquet",
@@ -19,6 +17,6 @@
     "NUM_LAYERS": 1,
     "MEMORY_CLEANUP_FREQUENCY": 50,
     "MAX_HISTORY_LENGTH": 20,
-    "_comment_ranking": "For ranking mode, you may want to add: 'PRETRAINED_RETRIEVAL_PATH': 'path/to/artifacts'"
+    "TASK_MODE": "retrieval"
 } 
 
