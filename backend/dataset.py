@@ -83,7 +83,7 @@ class DataLoaderFactory:
             
             # Use smaller batch size for validation/test
             if split in ['validation', 'test']:
-                batch_size = self.config.get('BATCH_SIZE', 64)/2
+                batch_size = self.config.get('BATCH_SIZE', 32)
             
             dataloader = DataLoader(
                 dataset,
