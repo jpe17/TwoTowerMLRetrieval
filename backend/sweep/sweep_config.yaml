@@ -18,7 +18,7 @@ parameters:
   EPOCHS:
     values: [5]
   HIDDEN_DIM:
-    values: [32, 64, 128, 256]
+    values: [32, 64, 128]
   MARGIN:
     values: [0.2, 0.5]
   RNN_TYPE:
@@ -32,7 +32,7 @@ parameters:
   GRADIENT_ACCUMULATION_STEPS:
     values: [2, 4]
   SUBSAMPLE_RATIO:
-    values: [0.1]
+    values: [0.01]
 early_terminate:
   type: hyperband
   min_iter: 2

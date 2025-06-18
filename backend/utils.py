@@ -37,7 +37,9 @@ def setup_memory_optimization():
 
 def clean_memory():
     """Aggressive memory cleaning for MPS/CUDA."""
-    gc.collect()  # Python garbage collection
+    # Multiple garbage collection passes
+    for _ in range(3):
+        gc.collect()
     
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -62,6 +64,14 @@ def get_memory_usage() -> str:
         # MPS doesn't have direct memory query methods
         return "MPS: Memory tracking not available"
     return "CPU: Memory tracking not available"
+
+
+def safe_del(*tensors):
+    """Safely delete tensors and clean memory."""
+    for tensor in tensors:
+        if tensor is not None:
+            del tensor
+    clean_memory()
 
 
 def load_config(config_path: str = 'backend/config.json') -> Dict[str, Any]:
