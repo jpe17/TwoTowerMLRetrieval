@@ -15,24 +15,17 @@ from collections import defaultdict
 
 
 class SimpleEvaluator:
-    """Task-aware evaluator with query evaluation and text search capabilities."""
+    """Evaluator for ranking tasks with query evaluation and text search capabilities."""
     
-    def __init__(self, model: TwoTowerModel, tokenizer: PretrainedTokenizer, device: torch.device, config: dict = None):
+    def __init__(self, model: TwoTowerModel, tokenizer: PretrainedTokenizer, device: torch.device, config: dict = {}):
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
-        self.config = config or {}
+        self.config = config
         self.model.eval()
-        
-        # Detect task mode
-        self.task_mode = self.config.get('TASK_MODE', 'retrieval')
-        self.is_ranking = self.task_mode == 'ranking'
     
     def score_query_doc_pair(self, query: str, document: str) -> float:
         """Score a single query-document pair (for ranking tasks)."""
-        if not self.is_ranking:
-            raise ValueError("score_query_doc_pair only available for ranking tasks")
-        
         # Tokenize and encode query and document together
         query_tokens = self.tokenizer.encode(query)
         doc_tokens = self.tokenizer.encode(document)
@@ -46,9 +39,9 @@ class SimpleEvaluator:
             score = self.model.encode_text(combined_tensor)
             return score.squeeze().item()
     
-    def evaluate_query(self, query: str, documents: List[str], positive_docs: List[str] = None) -> List[Tuple[str, float, bool]]:
+    def evaluate_query(self, query: str, documents: List[str], positive_docs: List[str] = []) -> List[Tuple[str, float, bool]]:
         """
-        Evaluate a query against documents - task-aware.
+        Evaluate a query against documents for ranking tasks.
         
         Args:
             query: Query string
@@ -59,27 +52,13 @@ class SimpleEvaluator:
             List of (document, score, is_correct) tuples
         """
         with torch.no_grad():
-            if self.is_ranking:
-                # For ranking: score each query-document pair individually
-                scores = []
-                for doc in documents:
-                    score = self.score_query_doc_pair(query, doc)
-                    scores.append(score)
-                scores = torch.tensor(scores)
-            else:
-                # For retrieval: use separate encoders and cosine similarity
-                query_tokens = self.tokenizer.encode(query)
-                query_tensor = pad_sequence([torch.tensor(query_tokens, dtype=torch.long)], batch_first=True).to(self.device)
-                query_vec = self.model.encode_query(query_tensor)
-
-                # Encode documents
-                doc_tokens = [torch.tensor(self.tokenizer.encode(doc), dtype=torch.long) for doc in documents]
-                doc_tensors = pad_sequence(doc_tokens, batch_first=True).to(self.device)
-                doc_vecs = self.model.encode_document(doc_tensors)
-
-                # Calculate cosine similarity
-                scores = F.cosine_similarity(query_vec, doc_vecs, dim=1)
-            
+            # Score each query-document pair individually
+            scores = []
+            for doc in documents:
+                score = self.score_query_doc_pair(query, doc)
+                scores.append(score)
+            scores = torch.tensor(scores)
+        
             # Get top 10 results
             top_indices = torch.argsort(scores, descending=True)[:10]
             
@@ -106,9 +85,6 @@ class SimpleEvaluator:
         Returns:
             Dictionary of ranking metrics
         """
-        if not self.is_ranking:
-            return {}
-        
         # Get predicted scores
         predicted_scores = []
         for doc in documents:
@@ -167,44 +143,25 @@ class SimpleEvaluator:
         
         return metrics
     
-    def search_similar(self, text: str, documents: List[str], embeddings_path: str = None) -> List[Tuple[str, float]]:
+    def search_similar(self, text: str, documents: List[str]) -> List[Tuple[str, float]]:
         """
-        Search for similar documents - task-aware.
+        Search for similar documents for ranking tasks.
         
         Args:
             text: Input text to find similar documents for
             documents: List of documents to search through
-            embeddings_path: Path to saved document embeddings (optional)
             
         Returns:
             List of (document, similarity_score) tuples
         """
         with torch.no_grad():
-            if self.is_ranking:
-                # For ranking: treat as query and score each document
-                scores = []
-                for doc in documents:
-                    score = self.score_query_doc_pair(text, doc)
-                    scores.append(score)
-                scores = torch.tensor(scores)
-            else:
-                # For retrieval: use embeddings and cosine similarity
-                text_tokens = self.tokenizer.encode(text)
-                text_tensor = pad_sequence([torch.tensor(text_tokens, dtype=torch.long)], batch_first=True).to(self.device)
-                text_vec = self.model.encode_query(text_tensor)
-                
-                # Load or compute document embeddings
-                if embeddings_path and os.path.exists(embeddings_path):
-                    doc_embeddings = torch.tensor(np.load(embeddings_path), device=self.device)
-                else:
-                    # Compute embeddings on-the-fly
-                    doc_tokens = [torch.tensor(self.tokenizer.encode(doc), dtype=torch.long) for doc in documents]
-                    doc_tensors = pad_sequence(doc_tokens, batch_first=True).to(self.device)
-                    doc_embeddings = self.model.encode_document(doc_tensors)
-                
-                # Calculate cosine similarity
-                scores = F.cosine_similarity(text_vec, doc_embeddings, dim=1)
-            
+            # Score each document
+            scores = []
+            for doc in documents:
+                score = self.score_query_doc_pair(text, doc)
+                scores.append(score)
+            scores = torch.tensor(scores)
+        
             # Get top 10 results
             top_indices = torch.argsort(scores, descending=True)[:10]
             
@@ -217,36 +174,29 @@ class SimpleEvaluator:
             return results
     
     def print_query_results(self, query: str, results: List[Tuple[str, float, bool]]):
-        """Print formatted query evaluation results - task-aware."""
-        task_emoji = "🎯" if self.is_ranking else "🔍"
-        task_name = "Ranking" if self.is_ranking else "Retrieval"
-        
-        print(f"\n{task_emoji} {task_name} Query: {query}")
+        """Print formatted query evaluation results for ranking tasks."""
+        print(f"\n🎯 Ranking Query: {query}")
         print("=" * 80)
         
         for i, (doc, score, is_correct) in enumerate(results, 1):
             status = "✅" if is_correct else "❌" if is_correct is False else "❓"
-            score_label = "Relevance" if self.is_ranking else "Similarity"
-            print(f"{i:2d}. {status} {score_label}: {score:.4f}")
+            print(f"{i:2d}. {status} Relevance: {score:.4f}")
             print(f"    {doc[:100]}...")
             print()
     
     def print_search_results(self, text: str, results: List[Tuple[str, float]]):
-        """Print formatted search results - task-aware."""
-        task_emoji = "🎯" if self.is_ranking else "🔎"
-        score_label = "Relevance" if self.is_ranking else "Similarity"
-        
-        print(f"\n{task_emoji} Similar to: {text}")
+        """Print formatted search results for ranking tasks."""
+        print(f"\n🎯 Similar to: {text}")
         print("=" * 80)
         
         for i, (doc, score) in enumerate(results, 1):
-            print(f"{i:2d}. {score_label}: {score:.4f}")
+            print(f"{i:2d}. Relevance: {score:.4f}")
             print(f"    {doc[:100]}...")
             print()
     
     def print_ranking_metrics(self, query: str, metrics: dict):
-        """Print ranking metrics (only for ranking tasks)."""
-        if not self.is_ranking or not metrics:
+        """Print ranking metrics."""
+        if not metrics:
             return
         
         print(f"\n📊 Ranking Metrics for: {query}")
