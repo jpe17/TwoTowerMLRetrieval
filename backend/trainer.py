@@ -223,7 +223,7 @@ class TwoTowerTrainer:
             print(progress_bar, end='', flush=True)
             
             # Detailed logging every 50 batches
-            if batch_count % 50 == 0:
+            if batch_count % 200 == 0:
                 print(f"\n     ┌─ Gap:  {batch_metrics['similarity_gap']:7.3f} │ Magnitude: {batch_metrics['embedding_magnitude']:6.3f}")
                 print(f"     └─ Pos Sim: {batch_metrics['pos_similarity']:6.3f} │ Neg Sim: {batch_metrics['neg_similarity']:6.3f}")
                 
