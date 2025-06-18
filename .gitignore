@@ -6,4 +6,6 @@ scratch/
 wandb/
 backend/__pycache__
 venv/
+frontend/chroma_store
+.DS_Store
 
