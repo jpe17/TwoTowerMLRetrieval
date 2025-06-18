@@ -14,12 +14,14 @@ from dotenv import load_dotenv
 # Add backend to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from ..data_loader import DataLoader
-from ..tokenizer import PretrainedTokenizer
-from ..dataset import DataLoaderFactory
-from ..model import ModelFactory
-from ..trainer import TrainerFactory
-from ..utils import (
+# Import modules using direct imports (not relative)
+sys.path.append('backend')
+from data_loader import DataLoader
+from tokenizer import PretrainedTokenizer
+from dataset import DataLoaderFactory
+from model import ModelFactory
+from trainer import TwoTowerTrainer
+from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
     load_pretrained_embeddings, print_model_summary
 )
@@ -65,6 +67,20 @@ def sweep_train():
     print("\n🔢 Loading pretrained embeddings...")
     pretrained_embeddings = load_pretrained_embeddings(config['EMBEDDINGS_PATH'])
 
+    # VOCAB REDUCTION: Drop last words if needed (keep most frequent)
+    words_to_drop = 0
+    original_vocab_size = tokenizer.vocab_size()
+    new_vocab_size = original_vocab_size - words_to_drop
+    
+    # Truncate embeddings to new vocab size
+    pretrained_embeddings = pretrained_embeddings[:new_vocab_size]
+    
+    # Filter tokenizer vocabulary to keep only first new_vocab_size words
+    if words_to_drop > 0:
+        filtered_word2idx = {word: idx for word, idx in tokenizer.word2idx.items() if idx < new_vocab_size}
+        tokenizer.word2idx = filtered_word2idx
+        tokenizer.idx2word = {idx: word for word, idx in filtered_word2idx.items()}
+
     # Add dimensions to config
     config['VOCAB_SIZE'] = tokenizer.vocab_size()
     config['EMBED_DIM'] = pretrained_embeddings.shape[1]
@@ -93,7 +109,7 @@ def sweep_train():
 
     # Create trainer
     print("\n🎯 Setting up trainer...")
-    trainer = TrainerFactory.create_trainer(config, model, device)
+    trainer = TwoTowerTrainer(model, config, device)
 
     # Train the model
     print("\n🚀 Starting training...")
