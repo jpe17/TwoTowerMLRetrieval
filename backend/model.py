@@ -91,12 +91,9 @@ class TwoTowerModel(nn.Module):
             pretrained_embeddings, **encoder_kwargs
         )
         
-        if shared_encoder:
-            self.doc_encoder = self.query_encoder
-        else:
-            self.doc_encoder = RNNEncoder(
-                vocab_size, embed_dim, hidden_dim, 
-                pretrained_embeddings, **encoder_kwargs
+        self.doc_encoder = RNNEncoder(
+            vocab_size, embed_dim, hidden_dim, 
+            pretrained_embeddings, **encoder_kwargs
             )
         
         self.shared_encoder = shared_encoder
