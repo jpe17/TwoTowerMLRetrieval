@@ -10,278 +10,312 @@ import wandb
 
 
 class TwoTowerTrainer:
-    """Simple, clean trainer for Two-Tower model focusing on triplet-based learning."""
+    """Clean trainer for Two-Tower model with triplet learning and comprehensive metrics."""
     
-    def __init__(
-        self, 
-        model: TwoTowerModel, 
-        optimizer: torch.optim.Optimizer,
-        loss_function,
-        device: torch.device,
-        config: Dict
-    ):
+    def __init__(self, model: TwoTowerModel, config: Dict, device: torch.device):
         self.model = model
-        self.optimizer = optimizer
-        self.loss_function = loss_function
-        self.device = device
         self.config = config
+        self.device = device
         
-        # Simple tracking
+        # Create optimizer and loss function directly
+        self.optimizer = torch.optim.Adam(
+            model.parameters(), 
+            lr=config.get('LR', 0.001)
+        )
+        
+        self.loss_function = ModelFactory.get_loss_function(
+            loss_type=config.get('LOSS_TYPE', 'triplet'),
+            margin=config.get('MARGIN', 1.0)
+        )
+        
+        # Training tracking
         self.train_losses = []
         self.val_losses = []
         self.best_val_loss = float('inf')
         
-        # Initialize WandB once
+        # Initialize WandB
         if not wandb.run:
             wandb.init(project="two-tower-ml-retrieval")
     
-    def compute_batch_metrics(self, q_vec, pos_vec, neg_vec):
-        """Compute core training metrics for triplet-based learning."""
+    def compute_triplet_metrics(self, query_emb, pos_emb, neg_emb):
+        """Compute basic triplet metrics."""
         with torch.no_grad():
-            # For retrieval: standard similarity metrics
-            pos_sim = (q_vec * pos_vec).sum(dim=1)
-            neg_sim = (q_vec * neg_vec).sum(dim=1)
-            
-            acc = (pos_sim > neg_sim).float().mean().item()
-            gap = (pos_sim - neg_sim).mean().item()
-            mag = q_vec.norm(dim=1).mean().item()
+            pos_sim = (query_emb * pos_emb).sum(dim=1)
+            neg_sim = (query_emb * neg_emb).sum(dim=1)
             
             return {
-                'accuracy': acc,
-                'similarity_gap': gap,
-                'magnitude': mag,
+                'accuracy': (pos_sim > neg_sim).float().mean().item(),
+                'similarity_gap': (pos_sim - neg_sim).mean().item(),
                 'pos_similarity': pos_sim.mean().item(),
-                'neg_similarity': neg_sim.mean().item()
+                'neg_similarity': neg_sim.mean().item(),
+                'embedding_magnitude': query_emb.norm(dim=1).mean().item()
             }
     
-    def compute_recall_metrics(self, query_embeddings, doc_embeddings, k_values=[5, 10]):
-        """Simple recall computation for retrieval tasks."""
-        batch_size = query_embeddings.size(0)
-        
-        # Compute similarities
-        similarities = torch.mm(query_embeddings, doc_embeddings.t())
-        
-        # Get top-k indices
+    def compute_retrieval_metrics(self, query_emb, doc_emb, k_values=[5, 10]):
+        """Compute recall metrics for retrieval evaluation."""
+        batch_size = query_emb.size(0)
+        similarities = torch.mm(query_emb, doc_emb.t())
         _, top_k_indices = torch.topk(similarities, k=max(k_values), dim=1)
         
         metrics = {}
         for k in k_values:
-            # For each query, check if positive doc (index i) is in top-k
+            # Each query's positive doc is at index i
             recall_scores = []
             for i in range(batch_size):
-                if i in top_k_indices[i, :k]:
-                    recall_scores.append(1.0)
-                else:
-                    recall_scores.append(0.0)
+                recall_scores.append(1.0 if i in top_k_indices[i, :k] else 0.0)
             metrics[f'recall_at_{k}'] = np.mean(recall_scores)
         
         return metrics
     
-    def train_epoch(self, train_loader, val_loader, epoch):
-        """Train one epoch with triplet-based metrics."""
-        self.model.train()
-        total_loss = 0
-        total_metrics = {'accuracy': 0, 'similarity_gap': 0, 'magnitude': 0}
-        num_batches = 0
+    def compute_ranking_metrics(self, query_emb, doc_emb, k_values=[5, 10]):
+        """Compute ranking metrics: MRR, NDCG, MAP."""
+        batch_size = query_emb.size(0)
+        similarities = torch.mm(query_emb, doc_emb.t())
         
-        for batch_idx, (query_batch, pos_batch, neg_batch) in enumerate(train_loader):
+        # Get rankings (higher similarity = better rank)
+        _, rankings = torch.sort(similarities, dim=1, descending=True)
+        
+        mrr_scores = []
+        ndcg_scores = {k: [] for k in k_values}
+        map_scores = {k: [] for k in k_values}
+        
+        for i in range(batch_size):
+            # Find position of positive doc (index i) in rankings
+            pos_rank = (rankings[i] == i).nonzero(as_tuple=True)[0].item() + 1  # 1-indexed
+            
+            # MRR: Mean Reciprocal Rank
+            mrr_scores.append(1.0 / pos_rank)
+            
+            # NDCG and MAP at different k values
+            for k in k_values:
+                if pos_rank <= k:
+                    # NDCG@k: For binary relevance, NDCG = 1/log2(rank+1)
+                    ndcg_scores[k].append(1.0 / np.log2(pos_rank + 1))
+                    
+                    # MAP@k: For single relevant document, AP = 1/rank
+                    map_scores[k].append(1.0 / pos_rank)
+                else:
+                    ndcg_scores[k].append(0.0)
+                    map_scores[k].append(0.0)
+        
+        metrics = {'mrr': np.mean(mrr_scores)}
+        for k in k_values:
+            metrics[f'ndcg_at_{k}'] = np.mean(ndcg_scores[k])
+            metrics[f'map_at_{k}'] = np.mean(map_scores[k])
+        
+        return metrics
+    
+    def evaluate_batch(self, val_loader, max_batches=3):
+        """Quick evaluation with both retrieval and ranking metrics."""
+        self.model.eval()
+        
+        all_retrieval_metrics = []
+        all_ranking_metrics = []
+        
+        with torch.no_grad():
+            for batch_idx, (queries, pos_docs, neg_docs) in enumerate(val_loader):
+                if batch_idx >= max_batches:
+                    break
+                
+                # Move to device
+                queries = queries.to(self.device, non_blocking=True)
+                pos_docs = pos_docs.to(self.device, non_blocking=True) 
+                neg_docs = neg_docs.to(self.device, non_blocking=True)
+                
+                # Get embeddings
+                query_emb = self.model.encode_query(queries)
+                pos_emb = self.model.encode_document(pos_docs)
+                neg_emb = self.model.encode_document(neg_docs)
+                
+                # Combine positive and negative docs for evaluation
+                doc_emb = torch.cat([pos_emb, neg_emb], dim=0)
+                
+                # Compute metrics
+                retrieval_metrics = self.compute_retrieval_metrics(query_emb, doc_emb)
+                ranking_metrics = self.compute_ranking_metrics(query_emb, doc_emb)
+                
+                all_retrieval_metrics.append(retrieval_metrics)
+                all_ranking_metrics.append(ranking_metrics)
+        
+        # Average across batches
+        if not all_retrieval_metrics:
+            return {}
+        
+        final_metrics = {}
+        
+        # Average retrieval metrics
+        for key in all_retrieval_metrics[0].keys():
+            final_metrics[key] = np.mean([m[key] for m in all_retrieval_metrics])
+        
+        # Average ranking metrics
+        for key in all_ranking_metrics[0].keys():
+            final_metrics[key] = np.mean([m[key] for m in all_ranking_metrics])
+        
+        return final_metrics
+    
+    def train_epoch(self, train_loader, val_loader, epoch):
+        """Train one epoch with comprehensive logging."""
+        self.model.train()
+        epoch_loss = 0
+        epoch_metrics = {'accuracy': 0, 'similarity_gap': 0, 'embedding_magnitude': 0}
+        batch_count = 0
+        
+        for batch_idx, (queries, pos_docs, neg_docs) in enumerate(train_loader):
             # Move to device
-            query_batch = query_batch.to(self.device, non_blocking=True)
-            pos_batch = pos_batch.to(self.device, non_blocking=True)
-            neg_batch = neg_batch.to(self.device, non_blocking=True)
+            queries = queries.to(self.device, non_blocking=True)
+            pos_docs = pos_docs.to(self.device, non_blocking=True)
+            neg_docs = neg_docs.to(self.device, non_blocking=True)
             
-            # Forward pass - two-tower approach
-            q_vec = self.model.encode_query(query_batch)
-            pos_vec = self.model.encode_document(pos_batch)
-            neg_vec = self.model.encode_document(neg_batch)
+            # Forward pass
+            query_emb = self.model.encode_query(queries)
+            pos_emb = self.model.encode_document(pos_docs)
+            neg_emb = self.model.encode_document(neg_docs)
             
-            loss = self.loss_function((q_vec, pos_vec, neg_vec))
-            batch_metrics = self.compute_batch_metrics(q_vec, pos_vec, neg_vec)
+            # Compute loss and metrics
+            loss = self.loss_function((query_emb, pos_emb, neg_emb))
+            batch_metrics = self.compute_triplet_metrics(query_emb, pos_emb, neg_emb)
             
             # Backward pass
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             
-            # Track metrics
-            total_loss += loss.item()
-            for key in total_metrics:
-                total_metrics[key] += batch_metrics[key]
-            num_batches += 1
+            # Track progress
+            epoch_loss += loss.item()
+            for key in epoch_metrics:
+                epoch_metrics[key] += batch_metrics[key]
+            batch_count += 1
             
-            # Progress every 50 batches
-            if num_batches % 50 == 0:
-                current_loss = loss.item()
-                current_acc = batch_metrics['accuracy']
-                current_gap = batch_metrics['similarity_gap']
-                current_mag = batch_metrics['magnitude']
-                
-                print(f"  Epoch {epoch+1}, Batch {num_batches}/{len(train_loader)}, "
-                      f"Loss: {current_loss:.4f}, Acc: {current_acc:.3f}, "
-                      f"Gap: {current_gap:.3f}, Mag: {current_mag:.3f}")
+            # Progress logging every 50 batches
+            if batch_count % 50 == 0:
+                print(f"  Epoch {epoch+1}, Batch {batch_count}/{len(train_loader)}")
+                print(f"    Loss: {loss.item():.4f}, Acc: {batch_metrics['accuracy']:.3f}")
+                print(f"    Gap: {batch_metrics['similarity_gap']:.3f}, Mag: {batch_metrics['embedding_magnitude']:.3f}")
                 
                 wandb.log({
-                    "batch_loss": current_loss,
-                    "batch_accuracy": current_acc,
-                    "batch_similarity_gap": current_gap,
-                    "batch_magnitude": current_mag,
-                    "batch": num_batches,
+                    "batch_loss": loss.item(),
+                    "batch_accuracy": batch_metrics['accuracy'],
+                    "batch_similarity_gap": batch_metrics['similarity_gap'],
+                    "batch_magnitude": batch_metrics['embedding_magnitude'],
+                    "batch": batch_count,
                     "epoch": epoch + 1
                 })
             
-            # Recall metrics every 200 batches
-            if num_batches % 200 == 0 and val_loader is not None:
-                self.model.eval()
-                recall_metrics = self.quick_recall_check(val_loader)
-                print(f"    R@5: {recall_metrics.get('recall_at_5', 0):.3f}, "
-                      f"R@10: {recall_metrics.get('recall_at_10', 0):.3f}")
+            # Evaluation metrics every 200 batches
+            if batch_count % 200 == 0 and val_loader is not None:
+                eval_metrics = self.evaluate_batch(val_loader)
                 
-                wandb_metrics = {f"batch_{k}": v for k, v in recall_metrics.items()}
-                wandb_metrics.update({"batch": num_batches, "epoch": epoch + 1})
+                print(f"    📊 Retrieval - R@5: {eval_metrics.get('recall_at_5', 0):.3f}, R@10: {eval_metrics.get('recall_at_10', 0):.3f}")
+                print(f"    🎯 Ranking - MRR: {eval_metrics.get('mrr', 0):.3f}, NDCG@5: {eval_metrics.get('ndcg_at_5', 0):.3f}")
+                
+                # Log evaluation metrics to WandB
+                wandb_metrics = {f"batch_{k}": v for k, v in eval_metrics.items()}
+                wandb_metrics.update({"batch": batch_count, "epoch": epoch + 1})
                 wandb.log(wandb_metrics)
-                self.model.train()
+                
+                self.model.train()  # Back to training mode
             
             # Memory cleanup
-            if num_batches % 500 == 0:
+            if batch_count % 500 == 0:
                 clean_memory()
-            
-            # Clear tensors
-            del query_batch, pos_batch, neg_batch, loss
         
-        # Average metrics for epoch
-        avg_loss = total_loss / num_batches
-        for key in total_metrics:
-            total_metrics[key] /= num_batches
+        # Return epoch averages
+        avg_loss = epoch_loss / batch_count
+        for key in epoch_metrics:
+            epoch_metrics[key] /= batch_count
         
-        return avg_loss, total_metrics
+        return avg_loss, epoch_metrics
     
-    def validate_epoch(self, val_loader, epoch):
-        """Simple validation with triplet-based metrics."""
+    def validate_epoch(self, val_loader):
+        """Validate one epoch."""
         self.model.eval()
         total_loss = 0
-        total_metrics = {'accuracy': 0, 'similarity_gap': 0, 'magnitude': 0}
-        num_batches = 0
+        total_metrics = {'accuracy': 0, 'similarity_gap': 0, 'embedding_magnitude': 0}
+        batch_count = 0
         
         with torch.no_grad():
-            for query_batch, pos_batch, neg_batch in val_loader:
-                query_batch = query_batch.to(self.device, non_blocking=True)
-                pos_batch = pos_batch.to(self.device, non_blocking=True)
-                neg_batch = neg_batch.to(self.device, non_blocking=True)
+            for queries, pos_docs, neg_docs in val_loader:
+                queries = queries.to(self.device, non_blocking=True)
+                pos_docs = pos_docs.to(self.device, non_blocking=True)
+                neg_docs = neg_docs.to(self.device, non_blocking=True)
                 
-                q_vec = self.model.encode_query(query_batch)
-                pos_vec = self.model.encode_document(pos_batch)
-                neg_vec = self.model.encode_document(neg_batch)
+                query_emb = self.model.encode_query(queries)
+                pos_emb = self.model.encode_document(pos_docs)
+                neg_emb = self.model.encode_document(neg_docs)
                 
-                loss = self.loss_function((q_vec, pos_vec, neg_vec))
-                batch_metrics = self.compute_batch_metrics(q_vec, pos_vec, neg_vec)
+                loss = self.loss_function((query_emb, pos_emb, neg_emb))
+                batch_metrics = self.compute_triplet_metrics(query_emb, pos_emb, neg_emb)
                 
                 total_loss += loss.item()
                 for key in total_metrics:
                     total_metrics[key] += batch_metrics[key]
-                num_batches += 1
-                
-                del query_batch, pos_batch, neg_batch, loss
+                batch_count += 1
         
-        avg_loss = total_loss / num_batches
+        # Return averages
+        avg_loss = total_loss / batch_count
         for key in total_metrics:
-            total_metrics[key] /= num_batches
+            total_metrics[key] /= batch_count
         
         return avg_loss, total_metrics
     
-    def quick_recall_check(self, val_loader, max_batches=3):
-        """Quick recall check for retrieval tasks."""
-        all_recall_metrics = []
-        
-        with torch.no_grad():
-            for batch_idx, (query_batch, pos_batch, neg_batch) in enumerate(val_loader):
-                if batch_idx >= max_batches:
-                    break
-                
-                query_batch = query_batch.to(self.device, non_blocking=True)
-                pos_batch = pos_batch.to(self.device, non_blocking=True)
-                neg_batch = neg_batch.to(self.device, non_blocking=True)
-                
-                q_vec = self.model.encode_query(query_batch)
-                pos_vec = self.model.encode_document(pos_batch)
-                neg_vec = self.model.encode_document(neg_batch)
-                
-                doc_vec = torch.cat([pos_vec, neg_vec], dim=0)
-                recall_metrics = self.compute_recall_metrics(q_vec, doc_vec)
-                all_recall_metrics.append(recall_metrics)
-                
-                del query_batch, pos_batch, neg_batch, q_vec, pos_vec, neg_vec, doc_vec
-        
-        if not all_recall_metrics:
-            return {}
-        
-        final_metrics = {}
-        for key in all_recall_metrics[0].keys():
-            final_metrics[key] = np.mean([m[key] for m in all_recall_metrics])
-        
-        return final_metrics
-    
     def train(self, train_loader, val_loader=None, epochs=None):
-        """Main training loop for triplet-based learning."""
+        """Main training loop."""
         if epochs is None:
             epochs = self.config.get('EPOCHS', 10)
         
         print(f"🚀 Starting training for {epochs} epochs...")
-        
         start_time = time.time()
         
         for epoch in range(epochs):
-            # Train
+            # Train epoch
             train_loss, train_metrics = self.train_epoch(train_loader, val_loader, epoch)
             self.train_losses.append(train_loss)
             
-            print(f"\n✅ Epoch {epoch+1} Training:")
-            print(f"   Loss: {train_loss:.4f}, Acc: {train_metrics['accuracy']:.3f}, "
-                  f"Gap: {train_metrics['similarity_gap']:.3f}, Mag: {train_metrics['magnitude']:.3f}")
+            print(f"\n✅ Epoch {epoch+1} Training Complete:")
+            print(f"   Loss: {train_loss:.4f}, Acc: {train_metrics['accuracy']:.3f}")
+            print(f"   Gap: {train_metrics['similarity_gap']:.3f}, Mag: {train_metrics['embedding_magnitude']:.3f}")
             
-            # Validate
+            # Validation
+            wandb_log = {
+                "epoch": epoch + 1,
+                "train_loss": train_loss,
+                "train_accuracy": train_metrics['accuracy'],
+                "train_similarity_gap": train_metrics['similarity_gap'],
+                "train_magnitude": train_metrics['embedding_magnitude']
+            }
+            
             if val_loader is not None:
-                val_loss, val_metrics = self.validate_epoch(val_loader, epoch)
+                val_loss, val_metrics = self.validate_epoch(val_loader)
                 self.val_losses.append(val_loss)
                 
                 print(f"📊 Epoch {epoch+1} Validation:")
-                print(f"   Loss: {val_loss:.4f}, Acc: {val_metrics['accuracy']:.3f}, "
-                      f"Gap: {val_metrics['similarity_gap']:.3f}, Mag: {val_metrics['magnitude']:.3f}")
+                print(f"   Loss: {val_loss:.4f}, Acc: {val_metrics['accuracy']:.3f}")
+                print(f"   Gap: {val_metrics['similarity_gap']:.3f}, Mag: {val_metrics['embedding_magnitude']:.3f}")
                 
-                # Save best model
+                # Full evaluation metrics
+                eval_metrics = self.evaluate_batch(val_loader, max_batches=5)
+                print(f"🎯 Final Metrics:")
+                print(f"   Retrieval - R@5: {eval_metrics.get('recall_at_5', 0):.3f}, R@10: {eval_metrics.get('recall_at_10', 0):.3f}")
+                print(f"   Ranking - MRR: {eval_metrics.get('mrr', 0):.3f}, NDCG@5: {eval_metrics.get('ndcg_at_5', 0):.3f}, MAP@5: {eval_metrics.get('map_at_5', 0):.3f}")
+                
+                # Track best model
                 if val_loss < self.best_val_loss:
                     self.best_val_loss = val_loss
                     print(f"🌟 New best validation loss: {val_loss:.4f}")
                 
-                # Recall metrics
-                recall_metrics = self.quick_recall_check(val_loader, max_batches=5)
-                print(f"🎯 Recall - R@5: {recall_metrics.get('recall_at_5', 0):.3f}, "
-                      f"R@10: {recall_metrics.get('recall_at_10', 0):.3f}")
-                
-                # Log to WandB
-                wandb.log({
-                    "epoch": epoch + 1,
-                    "train_loss": train_loss,
-                    "train_accuracy": train_metrics['accuracy'],
-                    "train_similarity_gap": train_metrics['similarity_gap'],
-                    "train_magnitude": train_metrics['magnitude'],
+                # Add validation metrics to WandB log
+                wandb_log.update({
                     "val_loss": val_loss,
                     "val_accuracy": val_metrics['accuracy'],
                     "val_similarity_gap": val_metrics['similarity_gap'],
-                    "val_magnitude": val_metrics['magnitude'],
-                    **{f"epoch_{k}": v for k, v in recall_metrics.items()}
-                })
-            else:
-                # Training only logging
-                wandb.log({
-                    "epoch": epoch + 1,
-                    "train_loss": train_loss,
-                    "train_accuracy": train_metrics['accuracy'],
-                    "train_similarity_gap": train_metrics['similarity_gap'],
-                    "train_magnitude": train_metrics['magnitude']
+                    "val_magnitude": val_metrics['embedding_magnitude'],
+                    **{f"epoch_{k}": v for k, v in eval_metrics.items()}
                 })
             
+            wandb.log(wandb_log)
             clean_memory()
         
+        # Training summary
         total_time = time.time() - start_time
         print(f"\n🎉 Training completed in {total_time/60:.1f} minutes!")
         print(f"Final train loss: {self.train_losses[-1]:.4f}")
@@ -292,27 +326,4 @@ class TwoTowerTrainer:
             'train_losses': self.train_losses,
             'val_losses': self.val_losses,
             'best_val_loss': self.best_val_loss
-        }
-
-
-class TrainerFactory:
-    """Simple factory for creating trainers."""
-    
-    @staticmethod
-    def create_trainer(config: Dict, model: TwoTowerModel, device: torch.device):
-        # Create optimizer
-        optimizer = torch.optim.Adam(model.parameters(), lr=config.get('LR', 0.001))
-        
-        # Get loss function
-        loss_function = ModelFactory.get_loss_function(
-            loss_type=config.get('LOSS_TYPE', 'triplet'),
-            margin=config.get('MARGIN', 1.0)
-        )
-        
-        return TwoTowerTrainer(
-            model=model,
-            optimizer=optimizer,
-            loss_function=loss_function,
-            device=device,
-            config=config
-        ) 
+        } 

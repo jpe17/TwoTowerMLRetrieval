@@ -24,7 +24,7 @@ from data_loader import DataLoader
 from tokenizer import PretrainedTokenizer
 from dataset import DataLoaderFactory
 from model import ModelFactory, TwoTowerModel
-from trainer import TrainerFactory, TwoTowerTrainer
+from trainer import TwoTowerTrainer
 from evaluator import SimpleEvaluator, AdvancedEvaluator
 from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
@@ -40,7 +40,7 @@ def create_model_and_trainer(config, pretrained_embeddings, device):
     model = model.to(device)
     
     # Create trainer using factory
-    trainer = TrainerFactory.create_trainer(config, model, device)
+    trainer = TwoTowerTrainer(model, config, device)
     
     return model, trainer
 
@@ -127,6 +127,20 @@ def main():
     # Load pretrained embeddings
     print("\n🔢 Loading pretrained embeddings...")
     pretrained_embeddings = load_pretrained_embeddings(config['EMBEDDINGS_PATH'])
+
+    # VOCAB REDUCTION: Drop last 100k words (keep most frequent)
+    words_to_drop = 0
+    original_vocab_size = tokenizer.vocab_size()
+    new_vocab_size = original_vocab_size - words_to_drop
+    print(f"🔪 Reducing vocab from {original_vocab_size:,} to {new_vocab_size:,} words")
+    
+    # Truncate embeddings to new vocab size
+    pretrained_embeddings = pretrained_embeddings[:new_vocab_size]
+    
+    # Filter tokenizer vocabulary to keep only first new_vocab_size words
+    filtered_word2idx = {word: idx for word, idx in tokenizer.word2idx.items() if idx < new_vocab_size}
+    tokenizer.word2idx = filtered_word2idx
+    tokenizer.idx2word = {idx: word for word, idx in filtered_word2idx.items()}
 
     # Add dimensions to config
     config['VOCAB_SIZE'] = tokenizer.vocab_size()
