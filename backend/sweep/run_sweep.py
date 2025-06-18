@@ -11,8 +11,10 @@ import sys
 import os
 import yaml
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Add backend to path for imports
+sys.path.append(str(Path(__file__).parent.parent))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 def main():
@@ -29,7 +31,11 @@ def main():
     
     # Load the sweep configuration
     print("📋 Loading sweep configuration...")
-    with open("backend/sweep_config.yaml", "r") as f:
+    sweep_config_path = "backend/sweep/sweep_config.yaml"
+    if not os.path.exists(sweep_config_path):
+        sweep_config_path = "sweep_config.yaml"  # fallback for running from sweep directory
+    
+    with open(sweep_config_path, "r") as f:
         sweep_config = yaml.safe_load(f)
     
     # Initialize the sweep
@@ -53,7 +59,7 @@ def main():
     
     if num_agents == 1:
         # Import the training function
-        from backend.sweep.sweep_train import sweep_train
+        from sweep_train import sweep_train
         
         # Run single agent
         print("🔄 Running sweep agent...")
@@ -63,18 +69,30 @@ def main():
         print(f"🔄 Starting {num_agents} parallel agents...")
         processes = []
         
+        # Get the current working directory to ensure proper execution
+        current_dir = os.getcwd()
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
         for i in range(num_agents):
             print(f"  Starting agent {i+1}/{num_agents}...")
-            cmd = [sys.executable, "-c", 
-                   f"import wandb; import os; import sys; "
-                   f"from dotenv import load_dotenv; "
-                   f"sys.path.append('backend'); "
-                   f"from sweep_train import sweep_train; "
-                   f"load_dotenv(); "
-                   f"wandb.login(key=os.getenv('WANDB_API_KEY')); "
-                   f"wandb.agent('{sweep_id}', function=sweep_train)"]
             
-            process = subprocess.Popen(cmd)
+            # Create command to run sweep agent
+            cmd = [
+                sys.executable, 
+                "-c",
+                f"import sys; import os; "
+                f"sys.path.append('{os.path.join(script_dir, '..')}'); "
+                f"sys.path.append('backend'); "
+                f"os.chdir('{current_dir}'); "
+                f"import wandb; "
+                f"from dotenv import load_dotenv; "
+                f"load_dotenv(); "
+                f"wandb.login(key=os.getenv('WANDB_API_KEY')); "
+                f"from backend.sweep.sweep_train import sweep_train; "
+                f"wandb.agent('{sweep_id}', function=sweep_train)"
+            ]
+            
+            process = subprocess.Popen(cmd, cwd=current_dir)
             processes.append(process)
         
         print(f"✅ {num_agents} agents started!")
