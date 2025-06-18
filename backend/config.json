@@ -10,7 +10,7 @@
     "LR": 0.001,
     "MARGIN": 0.5,
     "BATCH_SIZE": 64,
-    "EPOCHS": 5,
+    "EPOCHS": 3,
     "DEVICE": "mps",
     "NUM_SAMPLES_EVAL": 100,
     "NUM_DISTRACTORS_EVAL": 20,

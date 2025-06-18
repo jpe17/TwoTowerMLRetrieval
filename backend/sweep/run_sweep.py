@@ -13,7 +13,7 @@ import yaml
 from dotenv import load_dotenv
 
 # Add backend to path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 def main():
     """Initialize and run the WandB sweep."""
@@ -53,7 +53,7 @@ def main():
     
     if num_agents == 1:
         # Import the training function
-        from sweep_train import sweep_train
+        from backend.sweep.sweep_train import sweep_train
         
         # Run single agent
         print("🔄 Running sweep agent...")
