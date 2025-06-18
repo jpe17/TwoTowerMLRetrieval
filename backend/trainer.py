@@ -253,8 +253,8 @@ class TwoTowerTrainer:
             )
             print(progress_bar, end='', flush=True)
             
-            # Detailed logging and evaluation every 200 batches
-            if batch_count % 200 == 0:
+            # Detailed logging and evaluation every 50 batches
+            if batch_count % 50 == 0:
                 print(f"\n     ┌─ Gap:  {batch_metrics['similarity_gap']:7.3f} │ Magnitude: {batch_metrics['embedding_magnitude']:6.3f}")
                 print(f"     └─ Pos Sim: {batch_metrics['pos_similarity']:6.3f} │ Neg Sim: {batch_metrics['neg_similarity']:6.3f}")
                 
@@ -269,9 +269,9 @@ class TwoTowerTrainer:
                 
                 # Add validation metrics if validation loader provided
                 if val_loader is not None:
-                    # Compute validation loss on a few batches
-                    val_loss = self.compute_val_loss_quick(val_loader, max_batches=3)
-                    eval_metrics = self.evaluate_batch(val_loader)
+                    # Compute validation loss on more batches for better estimates
+                    val_loss = self.compute_val_loss_quick(val_loader, max_batches=10)
+                    eval_metrics = self.evaluate_batch(val_loader, max_batches=10)
                     
                     print(f"\n     🎯 EVALUATION METRICS at Batch {batch_count}")
                     print(f"     ┌─ Train Loss: {loss.item():6.4f} │ Val Loss: {val_loss:6.4f}")
@@ -299,7 +299,7 @@ class TwoTowerTrainer:
                 print(f"   ", end="")  # Reset progress bar indentation
             
             # Memory cleanup
-            if batch_count % 500 == 0:
+            if batch_count % 100 == 0:
                 clean_memory()
         
         # Complete the progress bar
