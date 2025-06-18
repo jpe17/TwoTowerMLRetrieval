@@ -400,3 +400,39 @@ class AdvancedEvaluator:
         print("-" * 40)
         df = pd.DataFrame([metrics])
         print(df.to_string(index=False))
+
+    def evaluate_triplets(self, triplets: List[Tuple[str, str, str]], embeddings_path: Optional[str] = None):
+        """
+        Evaluate a batch of triplets (query, positive_doc, negative_doc).
+        This method automatically constructs the required query/document lists and positive_docs_dict.
+        
+        Args:
+            triplets: List of (query, positive_doc, negative_doc) tuples
+            embeddings_path: Optional path to precomputed document embeddings
+        
+        Returns:
+            metrics: Dict of evaluation metrics
+            top_results: List of dicts with top results for each query
+
+        Usage:
+        evaluator = AdvancedEvaluator(model, tokenizer, device)
+        metrics, top_results = evaluator.evaluate_triplets(triplets)
+        """
+        from collections import defaultdict
+
+        queries = set()
+        documents = set()
+        positive_docs_dict = defaultdict(list)
+
+        for query, pos_doc, neg_doc in triplets:
+            queries.add(query)
+            documents.add(pos_doc)
+            documents.add(neg_doc)
+            positive_docs_dict[query].append(pos_doc)
+
+        queries = list(queries)
+        documents = list(documents)
+        # Remove duplicate positives for each query
+        positive_docs_dict = {q: list(set(docs)) for q, docs in positive_docs_dict.items()}
+
+        return self.evaluate_batch(queries, documents, positive_docs_dict, embeddings_path)
