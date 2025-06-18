@@ -170,12 +170,6 @@ def save_model_artifacts(
         checkpoint_data['query_encoder_state_dict'] = model.query_encoder.state_dict()
         checkpoint_data['doc_encoder_state_dict'] = model.doc_encoder.state_dict()
         checkpoint_data['model_type'] = 'two_tower'
-    elif hasattr(model, 'shared_encoder'):
-        # Merged/Ranking model
-        checkpoint_data['shared_encoder_state_dict'] = model.shared_encoder.state_dict()
-        if hasattr(model, 'classifier'):
-            checkpoint_data['classifier_state_dict'] = model.classifier.state_dict()
-        checkpoint_data['model_type'] = 'merged'
     else:
         # Fallback: save full model state dict
         checkpoint_data['model_state_dict'] = model.state_dict()
