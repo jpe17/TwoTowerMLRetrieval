@@ -9,23 +9,27 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # Install system dependencies that might be required by Python packages
-# For example, if you had packages that needed C compilers or other libs.
-# RUN apt-get update && apt-get install -y --no-install-recommends gcc
+RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file and install dependencies
+# Copy the requirements files and install dependencies
 COPY requirements.txt .
+COPY frontend/requirements.txt frontend_requirements.txt
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r frontend_requirements.txt
 
-# Copy the application code and artifacts into the container
+# Copy the application code into the container
+COPY ./frontend /app/frontend
 COPY ./backend /app/backend
-COPY ./backend /app/frontend
 COPY ./artifacts /app/artifacts
 COPY ./data /app/data
+
+# Create directory for ChromaDB
+RUN mkdir -p /app/chroma_store
 
 # Expose the port the app runs on
 EXPOSE 8888
 
-# Run the application using a production-grade server like Gunicorn
-# ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "app.main:app", "-b", "0.0.0.0:8888"]
-CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8888", "app.main:app"] 
+# Change to frontend directory and run the FastAPI app
+WORKDIR /app/frontend
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8888"] 
