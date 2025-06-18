@@ -6,3 +6,4 @@ scratch/
 wandb/
 backend/__pycache__
 venv/
+notebooks/

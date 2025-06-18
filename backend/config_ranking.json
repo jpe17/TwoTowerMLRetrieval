@@ -12,13 +12,13 @@
     "MARGIN": 1.0,
     "LR": 0.0001,
     "BATCH_SIZE": 32,
-    "EPOCHS": 5,
+    "EPOCHS": 3,
     "RNN_TYPE": "GRU",
     "NUM_LAYERS": 1,
     "DROPOUT": 0.1,
     "SHARED_ENCODER": true,
     "LOSS_TYPE": "triplet",
-    "SUBSAMPLE_RATIO": 0.1,
+    "SUBSAMPLE_RATIO": 0.05,
     
     "GRADIENT_ACCUMULATION_STEPS": 1,
     "MEMORY_CLEANUP_FREQUENCY": 100
