@@ -176,6 +176,33 @@ class TwoTowerTrainer:
         
         return final_metrics
     
+    def compute_val_loss_quick(self, val_loader, max_batches=3):
+        """Quick validation loss computation on a few batches."""
+        self.model.eval()
+        total_loss = 0
+        batch_count = 0
+        
+        with torch.no_grad():
+            for batch_idx, (queries, pos_docs, neg_docs) in enumerate(val_loader):
+                if batch_idx >= max_batches:
+                    break
+                
+                # Move to device
+                queries = queries.to(self.device, non_blocking=True)
+                pos_docs = pos_docs.to(self.device, non_blocking=True)
+                neg_docs = neg_docs.to(self.device, non_blocking=True)
+                
+                # Get embeddings and compute loss
+                query_emb = self.model.encode_query(queries)
+                pos_emb = self.model.encode_document(pos_docs)
+                neg_emb = self.model.encode_document(neg_docs)
+                
+                loss = self.loss_function((query_emb, pos_emb, neg_emb))
+                total_loss += loss.item()
+                batch_count += 1
+        
+        return total_loss / batch_count if batch_count > 0 else 0.0
+    
     def train_epoch(self, train_loader, val_loader, epoch):
         """Train one epoch with comprehensive logging."""
         self.model.train()
@@ -206,6 +233,10 @@ class TwoTowerTrainer:
             loss.backward()
             self.optimizer.step()
             
+            # Step the scheduler (OneCycleLR steps every batch)
+            if hasattr(self, 'scheduler'):
+                self.scheduler.step()
+            
             # Track progress
             epoch_loss += loss.item()
             for key in epoch_metrics:
@@ -222,34 +253,49 @@ class TwoTowerTrainer:
             )
             print(progress_bar, end='', flush=True)
             
-            # Detailed logging every 50 batches
+            # Detailed logging and evaluation every 200 batches
             if batch_count % 200 == 0:
                 print(f"\n     ┌─ Gap:  {batch_metrics['similarity_gap']:7.3f} │ Magnitude: {batch_metrics['embedding_magnitude']:6.3f}")
                 print(f"     └─ Pos Sim: {batch_metrics['pos_similarity']:6.3f} │ Neg Sim: {batch_metrics['neg_similarity']:6.3f}")
                 
-                wandb.log({
-                    "batch_loss": loss.item(),
-                    "batch_accuracy": batch_metrics['accuracy'],
-                    "batch_similarity_gap": batch_metrics['similarity_gap'],
-                    "batch_magnitude": batch_metrics['embedding_magnitude'],
-                    "batch": batch_count,
-                    "epoch": epoch + 1
-                })
-            
-            # Evaluation metrics every 200 batches
-            if batch_count % 200 == 0 and val_loader is not None:
-                eval_metrics = self.evaluate_batch(val_loader)
+                # Prepare WandB log with current training metrics
+                current_step = batch_count + epoch * len(train_loader)
+                wandb_log = {
+                    "loss": loss.item(),
+                    "accuracy": batch_metrics['accuracy'],
+                    "learning_rate": self.optimizer.param_groups[0]['lr'],
+                    "step": current_step
+                }
                 
-                print(f"\n     🎯 EVALUATION METRICS at Batch {batch_count}")
-                print(f"     ┌─ Retrieval  │ R@5: {eval_metrics.get('recall_at_5', 0):6.3f} │ R@10: {eval_metrics.get('recall_at_10', 0):6.3f}")
-                print(f"     └─ Ranking   │ MRR: {eval_metrics.get('mrr', 0):6.3f} │ NDCG@5: {eval_metrics.get('ndcg_at_5', 0):6.3f}")
+                # Add validation metrics if validation loader provided
+                if val_loader is not None:
+                    # Compute validation loss on a few batches
+                    val_loss = self.compute_val_loss_quick(val_loader, max_batches=3)
+                    eval_metrics = self.evaluate_batch(val_loader)
+                    
+                    print(f"\n     🎯 EVALUATION METRICS at Batch {batch_count}")
+                    print(f"     ┌─ Train Loss: {loss.item():6.4f} │ Val Loss: {val_loss:6.4f}")
+                    print(f"     ├─ Retrieval  │ R@5: {eval_metrics.get('recall_at_5', 0):6.3f} │ R@10: {eval_metrics.get('recall_at_10', 0):6.3f}")
+                    print(f"     └─ Ranking    │ MRR: {eval_metrics.get('mrr', 0):6.3f} │ NDCG@5: {eval_metrics.get('ndcg_at_5', 0):6.3f}")
+                    
+                    # Add validation metrics to the same WandB log
+                    wandb_log.update({
+                        "val_loss": val_loss,
+                        "recall_at_5": eval_metrics.get('recall_at_5', 0),
+                        "recall_at_10": eval_metrics.get('recall_at_10', 0),
+                        "mrr": eval_metrics.get('mrr', 0),
+                        "ndcg_at_5": eval_metrics.get('ndcg_at_5', 0)
+                    })
+                    
+                    # Track best validation loss
+                    if val_loss < self.best_val_loss:
+                        self.best_val_loss = val_loss
+                        print(f"     🌟 New best validation loss: {val_loss:.4f}")
+                    
+                    self.model.train()  # Back to training mode
                 
-                # Log evaluation metrics to WandB
-                wandb_metrics = {f"batch_{k}": v for k, v in eval_metrics.items()}
-                wandb_metrics.update({"batch": batch_count, "epoch": epoch + 1})
-                wandb.log(wandb_metrics)
-                
-                self.model.train()  # Back to training mode
+                # Single WandB log every 200 batches with all metrics
+                wandb.log(wandb_log)
                 print(f"   ", end="")  # Reset progress bar indentation
             
             # Memory cleanup
@@ -310,7 +356,20 @@ class TwoTowerTrainer:
         if epochs is None:
             epochs = self.config.get('EPOCHS', 10)
         
+        # Initialize OneCycleLR scheduler
+        total_steps = len(train_loader) * epochs
+        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            self.optimizer,
+            max_lr=self.config.get('MAX_LR', 0.01),  # Peak learning rate
+            total_steps=total_steps,
+            pct_start=self.config.get('WARMUP_PCT', 0.1),  # 10% warmup
+            anneal_strategy='cos',  # Cosine annealing
+            div_factor=self.config.get('DIV_FACTOR', 10),  # Initial LR = max_lr/10
+            final_div_factor=self.config.get('FINAL_DIV_FACTOR', 100)  # Final LR = max_lr/100
+        )
+        
         print(f"🚀 Starting training for {epochs} epochs...")
+        print(f"📈 OneCycleLR: {total_steps} total steps, max_lr={self.config.get('MAX_LR', 0.01)}")
         start_time = time.time()
         
         for epoch in range(epochs):
@@ -321,59 +380,28 @@ class TwoTowerTrainer:
             print(f"\n{'='*60}")
             print(f"✅ EPOCH {epoch+1:2d} TRAINING COMPLETE")
             print(f"{'='*60}")
-            print(f"📊 Training Metrics:")
-            print(f"   ┌─ Loss:      {train_loss:8.4f} │ Accuracy:  {train_metrics['accuracy']:7.3f}")
+            print(f"📊 Training Summary:")
+            print(f"   ┌─ Train Loss: {train_loss:7.4f} │ Accuracy:  {train_metrics['accuracy']:7.3f}")
             print(f"   └─ Gap:       {train_metrics['similarity_gap']:8.3f} │ Magnitude: {train_metrics['embedding_magnitude']:7.3f}")
             
-            # Validation
-            wandb_log = {
+            # Simple epoch-level WandB logging - training metrics only
+            wandb.log({
                 "epoch": epoch + 1,
-                "train_loss": train_loss,
-                "train_accuracy": train_metrics['accuracy'],
-                "train_similarity_gap": train_metrics['similarity_gap'],
-                "train_magnitude": train_metrics['embedding_magnitude']
-            }
+                "epoch_train_loss": train_loss,
+                "epoch_train_accuracy": train_metrics['accuracy'],
+                "epoch_learning_rate": self.optimizer.param_groups[0]['lr']
+            })
             
-            if val_loader is not None:
-                val_loss, val_metrics = self.validate_epoch(val_loader)
-                self.val_losses.append(val_loss)
-                
-                print(f"📊 Epoch {epoch+1} Validation:")
-                print(f"   Loss: {val_loss:.4f}, Acc: {val_metrics['accuracy']:.3f}")
-                print(f"   Gap: {val_metrics['similarity_gap']:.3f}, Mag: {val_metrics['embedding_magnitude']:.3f}")
-                
-                # Full evaluation metrics
-                eval_metrics = self.evaluate_batch(val_loader, max_batches=5)
-                print(f"🎯 Final Metrics:")
-                print(f"   Retrieval - R@5: {eval_metrics.get('recall_at_5', 0):.3f}, R@10: {eval_metrics.get('recall_at_10', 0):.3f}")
-                print(f"   Ranking - MRR: {eval_metrics.get('mrr', 0):.3f}, NDCG@5: {eval_metrics.get('ndcg_at_5', 0):.3f}, MAP@5: {eval_metrics.get('map_at_5', 0):.3f}")
-                
-                # Track best model
-                if val_loss < self.best_val_loss:
-                    self.best_val_loss = val_loss
-                    print(f"🌟 New best validation loss: {val_loss:.4f}")
-                
-                # Add validation metrics to WandB log
-                wandb_log.update({
-                    "val_loss": val_loss,
-                    "val_accuracy": val_metrics['accuracy'],
-                    "val_similarity_gap": val_metrics['similarity_gap'],
-                    "val_magnitude": val_metrics['embedding_magnitude'],
-                    **{f"epoch_{k}": v for k, v in eval_metrics.items()}
-                })
-            
-            wandb.log(wandb_log)
             clean_memory()
         
         # Training summary
         total_time = time.time() - start_time
         print(f"\n🎉 Training completed in {total_time/60:.1f} minutes!")
         print(f"Final train loss: {self.train_losses[-1]:.4f}")
-        if self.val_losses:
+        if self.best_val_loss < float('inf'):
             print(f"Best validation loss: {self.best_val_loss:.4f}")
         
         return {
             'train_losses': self.train_losses,
-            'val_losses': self.val_losses,
             'best_val_loss': self.best_val_loss
         } 

@@ -14,9 +14,9 @@ parameters:
   LR:
     values: [0.0001, 0.0005, 0.001, 0.002]
   BATCH_SIZE:
-    values: [32, 64, 128]
+    values: [32, 64, 128, 256]
   EPOCHS:
-    values: [3, 5]
+    values: [1]
   HIDDEN_DIM:
     values: [32, 64, 128, 256]
   MARGIN:
@@ -30,7 +30,7 @@ parameters:
   LOSS_TYPE:
     values: ["triplet"]
   SUBSAMPLE_RATIO:
-    values: [0.01, 0.02, 0.05]
+    values: [0.05]
   SHARED_ENCODER:
     values: [false, true]
 early_terminate:
