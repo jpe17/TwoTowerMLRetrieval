@@ -2,11 +2,9 @@
 """
 Two-Tower ML Retrieval - Main Training Script
 
-This script orchestrates the complete training pipeline with modular components.
-Supports subsampling datasets and full train/validation/test splits.
+Simple main script that works with the simplified trainer.
 """
 
-import argparse
 import sys
 import torch
 from pathlib import Path
@@ -14,11 +12,10 @@ from dotenv import load_dotenv
 import os
 import wandb
 
-
 load_dotenv()  # Loads .env file
 
+# Only login, don't init here (trainer will handle init)
 wandb.login(key=os.getenv("WANDB_API_KEY"))
-wandb.init(project="two-tower-ml-retrieval")  # Set your project name
 
 # Add backend to path for imports
 sys.path.append(str(Path(__file__).parent))
@@ -26,17 +23,17 @@ sys.path.append(str(Path(__file__).parent))
 from data_loader import DataLoader
 from tokenizer import PretrainedTokenizer
 from dataset import DataLoaderFactory
-from model import TwoTowerModel, ModelFactory
+from model import ModelFactory
 from trainer import TrainerFactory
 from evaluator import SimpleEvaluator
 from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
-    load_pretrained_embeddings, save_model_artifacts, print_model_summary
+    load_pretrained_embeddings, print_model_summary
 )
 
 
 def main():
-    """Main training function (config-only version)."""
+    """Simple main training function."""
     print("🚀 Two-Tower ML Retrieval Training Pipeline")
     print("=" * 60)
 
@@ -99,44 +96,21 @@ def main():
         epochs=config.get('EPOCHS')
     )
 
-    # Test the model
-    if 'test' in dataloaders:
-        print("\n🧪 Testing model...")
-        test_results = trainer.test(dataloaders['test'])
-    else:
-        test_results = {}
-
-    # Save model artifacts
-    print("\n💾 Saving model artifacts...")
-    final_loss = history['train_losses'][-1] if history['train_losses'] else 0.0
-    artifacts_path = save_model_artifacts(
-        model=trainer.get_model_for_inference(),
-        optimizer=trainer.optimizer,
-        config=config,
-        epoch=config.get('EPOCHS', 0),
-        final_loss=final_loss,
-        datasets_stats=dataset_stats
-    )
-
     print(f"\n📈 Training Summary:")
-    print(f"   Final Training Loss: {final_loss:.4f}")
+    print(f"   Final Training Loss: {history['train_losses'][-1]:.4f}")
     if history['val_losses']:
         print(f"   Final Validation Loss: {history['val_losses'][-1]:.4f}")
         print(f"   Best Validation Loss: {history['best_val_loss']:.4f}")
-    if test_results:
-        print(f"   Test Loss: {test_results['test_loss']:.4f}")
 
-    print(f"\n✅ Training completed! Artifacts saved to: {artifacts_path}")
-
-    # Demo the evaluator with actual data
+    # Demo the evaluator with test data
     if 'test' in datasets and datasets['test']:
-        print("\n🔍 Running evaluator demo...")
+        print("\n🔍 Testing Evaluator with Sample Queries...")
+        print("=" * 60)
         
-        # Get the trained model for evaluation
-        best_model = trainer.get_model_for_inference()
-        evaluator = SimpleEvaluator(best_model, tokenizer, device)
+        # Create evaluator
+        evaluator = SimpleEvaluator(trainer.model, tokenizer, device)
         
-        # Extract documents from test data for demo
+        # Get sample data from test set
         test_sample = datasets['test'][:50]  # Use first 50 test samples
         all_docs = []
         test_queries = []
@@ -144,23 +118,16 @@ def main():
         
         for query, pos_doc, neg_doc in test_sample:
             all_docs.extend([pos_doc, neg_doc])
-            if query not in test_queries:
+            if query not in test_queries[:3]:  # Limit to 3 demo queries
                 test_queries.append(query)
                 positive_docs[query] = [pos_doc]
-            else:
-                positive_docs[query].append(pos_doc)
         
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_docs = []
-        for doc in all_docs:
-            if doc not in seen:
-                seen.add(doc)
-                unique_docs.append(doc)
+        # Remove duplicates
+        unique_docs = list(dict.fromkeys(all_docs))
         
-        # 1. Query evaluation demo
-        if test_queries:
-            demo_query = test_queries[0]
+        # Test 2-3 sample queries
+        for i, demo_query in enumerate(test_queries[:3], 1):
+            print(f"\n📝 Demo Query {i}:")
             results = evaluator.evaluate_query(
                 query=demo_query,
                 documents=unique_docs,
@@ -168,15 +135,9 @@ def main():
             )
             evaluator.print_query_results(demo_query, results)
         
-        # 2. Similarity search demo
-        demo_text = "What is the capital of France?"
-        similar_docs = evaluator.search_similar(
-            text=demo_text,
-            documents=unique_docs[:20]  # Use subset for demo
-        )
-        evaluator.print_search_results(demo_text, similar_docs)
+        print("\n" + "=" * 60)
 
-    print("\n🎉 Pipeline completed successfully!")
+    print("\n🎉 Training completed successfully!")
 
 
 if __name__ == "__main__":
