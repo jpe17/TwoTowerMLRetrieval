@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Document Search</title>
+</head>
+<body>
+  <h2>Search Documents</h2>
+  <input type="text" id="queryInput" placeholder="Enter your query" size="40">
+  <button onclick="performSearch()">Search</button>
+
+  <h3>Results:</h3>
+  <ul id="resultsList"></ul>
+
+  <script>
+    async function performSearch() {
+      const query = document.getElementById("queryInput").value;
+      const response = await fetch("http://localhost:8000/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ query })
+      });
+
+      const data = await response.json();
+      const resultsList = document.getElementById("resultsList");
+      resultsList.innerHTML = ""; // Clear previous results
+
+      if (data.results && data.results.length > 0) {
+        data.results.forEach(([id, doc]) => {
+          const li = document.createElement("li");
+          li.textContent = `ID: ${id} — ${doc}`;
+          resultsList.appendChild(li);
+        });
+      } else {
+        const li = document.createElement("li");
+        li.textContent = "No results found.";
+        resultsList.appendChild(li);
+      }
+    }
+  </script>
+</body>
+</html>
