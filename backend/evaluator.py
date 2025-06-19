@@ -512,10 +512,10 @@ class AdvancedEvaluator:
             documents.add(neg_doc)
             positive_docs_dict[query].append(pos_doc)
 
-        sample_query = list(queries)[0]
-        print(f"Sample query: {sample_query}")
-        print(f"Positive docs: {positive_docs_dict[sample_query]}")
-        print(f"Are positives in document pool? {all(p in documents for p in positive_docs_dict[sample_query])}")
+        #sample_query = list(queries)[0]
+        #print(f"Sample query: {sample_query}")
+        #print(f"Positive docs: {positive_docs_dict[sample_query]}")
+        #print(f"Are positives in document pool? {all(p in documents for p in positive_docs_dict[sample_query])}")
 
         queries = list(queries)
         documents = list(documents)

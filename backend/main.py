@@ -176,7 +176,7 @@ def main():
 
     print(f"\n📈 Training Summary:")
     print(f"   Final Training Loss: {history['train_losses'][-1]:.4f}")
-    if history['val_losses']:
+    if history.get('val_losses'):
         print(f"   Final Validation Loss: {history['val_losses'][-1]:.4f}")
         print(f"   Best Validation Loss: {history['best_val_loss']:.4f}")
 
