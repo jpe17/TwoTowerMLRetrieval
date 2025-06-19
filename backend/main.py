@@ -11,6 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import wandb
+import argparse
 
 load_dotenv()  # Loads .env file
 
@@ -33,16 +34,48 @@ from utils import (
 )
 
 
-def create_model_and_trainer(config, pretrained_embeddings, device):
+def create_model_and_trainer(config, pretrained_embeddings, device, checkpoint_path=None):
     """Create two-tower model and trainer."""
     print("\n🏗️  Creating two-tower model...")
-    model = ModelFactory.create_two_tower_model(config, pretrained_embeddings)
-    model = model.to(device)
     
-    # Create trainer using factory
-    trainer = TwoTowerTrainer(model, config, device)
+    if checkpoint_path:
+        print(f"📥 Loading model from checkpoint: {checkpoint_path}")
+        # Load model artifacts (includes model state, optimizer state, config)
+        loaded_artifacts = load_model_artifacts(checkpoint_path)
+        
+        # Create model with loaded config
+        model = ModelFactory.create_two_tower_model(loaded_artifacts['config'], pretrained_embeddings)
+        model = model.to(device)
+        
+        # Load model state
+        model.load_state_dict(loaded_artifacts['model_state'])
+        
+        # Create trainer and restore optimizer state
+        trainer = TwoTowerTrainer(model, loaded_artifacts['config'], device)
+        if 'optimizer_state' in loaded_artifacts:
+            trainer.optimizer.load_state_dict(loaded_artifacts['optimizer_state'])
+            
+        # Update config with loaded config
+        config.update(loaded_artifacts['config'])
+        
+        print("✅ Model restored successfully from checkpoint")
+    else:
+        model = ModelFactory.create_two_tower_model(config, pretrained_embeddings)
+        model = model.to(device)
+        trainer = TwoTowerTrainer(model, config, device)
     
     return model, trainer
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Two-Tower Model Training')
+    parser.add_argument(
+        '--checkpoint', '-c',
+        type=str,
+        help='Path to checkpoint directory to resume training from'
+    )
+    return parser.parse_args()
 
 
 def demo_evaluator(model, trainer, tokenizer, device, datasets, config):
@@ -104,6 +137,9 @@ def demo_evaluator(model, trainer, tokenizer, device, datasets, config):
 
 def main():
     """Main training function."""
+    # Parse command line arguments
+    args = parse_args()
+    
     # Load and validate configuration
     print("📋 Loading configuration...")
     config = load_config('backend/config.json')
@@ -162,12 +198,20 @@ def main():
     dataloaders = dataloader_factory.create_dataloaders(datasets, tokenizer)
 
     # Create model and trainer
-    model, trainer = create_model_and_trainer(config, pretrained_embeddings, device)
+    model, trainer = create_model_and_trainer(
+        config, 
+        pretrained_embeddings, 
+        device,
+        checkpoint_path=args.checkpoint
+    )
     print_model_summary(model, config)
 
     # Train the model
     epochs = config.get('EPOCHS', 10)
     print(f"\n🚀 Starting training...")
+    if args.checkpoint:
+        print(f"   📌 Continuing training from checkpoint: {args.checkpoint}")
+    
     history = trainer.train(
         train_loader=dataloaders['train'],
         val_loader=dataloaders.get('validation'),
@@ -176,9 +220,10 @@ def main():
 
     print(f"\n📈 Training Summary:")
     print(f"   Final Training Loss: {history['train_losses'][-1]:.4f}")
-    if history['val_losses']:
+    if 'val_losses' in history and history['val_losses']:
         print(f"   Final Validation Loss: {history['val_losses'][-1]:.4f}")
-        print(f"   Best Validation Loss: {history['best_val_loss']:.4f}")
+        if 'best_val_loss' in history:
+            print(f"   Best Validation Loss: {history['best_val_loss']:.4f}")
 
     # Save the trained model
     print(f"\n💾 Saving model...")

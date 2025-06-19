@@ -5,11 +5,11 @@
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
     "SUBSAMPLE_RATIO": 0.05,
-    "NUM_TRIPLETS_PER_QUERY": 10,
+    "NUM_TRIPLETS_PER_QUERY": 1,
     "HIDDEN_DIM": 256,
     "MARGIN": 0.3,
-    "BATCH_SIZE": 64,
-    "EPOCHS": 3,
+    "BATCH_SIZE": 32,
+    "EPOCHS": 1,
     "DEVICE": "mps",
     "NUM_LAYERS": 2,
     "MEMORY_CLEANUP_FREQUENCY": 50,
@@ -18,14 +18,13 @@
     "DROPOUT": 0,
     "LOSS_TYPE": "triplet",
     "SHARED_ENCODER": false,
-    "HARD_NEGATIVE_RATIO": 0.3,
-    "MAX_LR": 0.002,
+    "MAX_LR": 1e-4,
     "DIV_FACTOR": 2,
     "FINAL_DIV_FACTOR": 10,
     "WARMUP_PCT": 0.3,
     "GRAD_CLIP": 1.0,
     "SCHEDULER_TYPE": "exponential", 
     "GAMMA": 0.95,   
-    "LR": 0.001
+    "LR": 1e-4
 } 
 
