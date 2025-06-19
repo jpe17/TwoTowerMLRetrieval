@@ -1,40 +1,24 @@
 {
     "TRAIN_DATASET_PATH": "data/ms_marco_train.parquet",
-    "VAL_DATASET_PATH": "data/ms_marco_validation.parquet", 
+    "VAL_DATASET_PATH": "data/ms_marco_validation.parquet",
     "TEST_DATASET_PATH": "data/ms_marco_test.parquet",
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
     
-    "SUBSAMPLE_RATIO": 0.001,
-    "NUM_TRIPLETS_PER_QUERY": 10,
+    "SUBSAMPLE_RATIO": 0.01,
+    "NUM_TRIPLETS_PER_QUERY": 1,
+    "TRAINING_MODE": "retrieval",
     
-    "EMBED_DIM": 200,
-    "HIDDEN_DIM": 256,
-    "NUM_LAYERS": 1,
+    "HIDDEN_DIM": 128,
     "RNN_TYPE": "GRU",
+    "NUM_LAYERS": 1,
+    "BIDIRECTIONAL": true,
+    "DROPOUT": 0.2,
     
-    "FREEZE_EMBEDDINGS": false,
-    "FINE_TUNE_EMBEDDINGS": true,
+    "BATCH_SIZE": 64,
+    "EPOCHS": 2,
+    "LR": 0.0005,
     
-    "BATCH_SIZE": 32,
-    "EPOCHS": 15,
-    "DEVICE": "mps",
-    
-    "LOSS_TYPE": "adaptive_triplet",
     "MARGIN": 0.3,
-    "NORMALIZE_OUTPUT": false,
-    "NORMALIZE_PRETRAINED_EMBEDDINGS": true,
-    
-    "POOLING_STRATEGY": "mean",
-    "DROPOUT": 0.3,
-    "EMBEDDING_DROPOUT": 0.2,
-    
-    "LR": 0.002,
-    "WEIGHT_DECAY": 1e-3,
-    "GRAD_CLIP": 0.5,
-    
-    "SCHEDULER_TYPE": "step",
-    "GAMMA": 0.95,
-    
-    "TASK_MODE": "retrieval"
+    "NORMALIZE_OUTPUT": true
 } 

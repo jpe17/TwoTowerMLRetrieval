@@ -4,7 +4,7 @@ from typing import List, Dict
 
 
 class PretrainedTokenizer:
-    """Tokenizer that uses a pretrained word-to-index mapping."""
+    """Tokenizer that uses a pretrained word-to-index mapping and handles unknown words."""
     
     def __init__(self, word_to_idx_path: str):
         """
@@ -13,16 +13,23 @@ class PretrainedTokenizer:
         Args:
             word_to_idx_path: Path to the pickled word-to-index dictionary
         """
-        # Load pretrained word_to_idx mapping
         with open(word_to_idx_path, 'rb') as f:
             self.word2idx = pickle.load(f)
         
+        # Define and handle the unknown token
+        self.unk_token = '<UNK>'
+        if self.unk_token not in self.word2idx:
+            unk_index = len(self.word2idx)
+            self.word2idx[self.unk_token] = unk_index
+            print(f"'{self.unk_token}' token not found in vocabulary. Added it at index {unk_index}.")
+        
+        self.unk_token_id = self.word2idx[self.unk_token]
         self.idx2word = {idx: word for word, idx in self.word2idx.items()}
-        print(f"Loaded vocabulary with {len(self.word2idx):,} tokens")
+        print(f"Loaded vocabulary with {len(self.word2idx):,} tokens (including '{self.unk_token}').")
 
     def encode(self, sentence: str) -> List[int]:
         """
-        Encode a sentence into token indices.
+        Encode a sentence into token indices, mapping unknown words to <UNK>.
         
         Args:
             sentence: Input text to tokenize
@@ -30,10 +37,10 @@ class PretrainedTokenizer:
         Returns:
             List of token indices
         """
-        # Tokenize sentence, preserving punctuation
-        tokens = re.findall(r"\w+|[.,!?;]", str(sentence))
-        # Only include words that exist in vocabulary, skip unknown words
-        return [self.word2idx[word] for word in tokens if word in self.word2idx]
+        # Standard practice: lowercase and tokenize
+        tokens = re.findall(r"\w+|[.,!?;]", str(sentence).lower())
+        # Map words to indices, using the UNK token for words not in the vocabulary
+        return [self.word2idx.get(word, self.unk_token_id) for word in tokens]
 
     def decode(self, token_ids: List[int]) -> str:
         """

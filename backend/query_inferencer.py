@@ -1,105 +1,97 @@
 import torch
 import numpy as np
 import json
-from typing import Optional
-from tokenizer import PretrainedTokenizer
-from model import ModelFactory
+from pathlib import Path
+import sys
 
+# Add backend to path for imports
+sys.path.append(str(Path(__file__).parent))
+
+from tokenizer import PretrainedTokenizer
+from model import TwoTowerModel
 
 class QueryInferencer:
-    """Minimal query inferencer for getting embeddings."""
+    """Handles loading a trained model and tokenizer from an artifacts directory to perform inference."""
     
-    def __init__(self, 
-                 config_path: str = "backend/config.json",
-                 model_path: Optional[str] = None):
-        """Initialize with model, tokenizer, and embeddings."""
-        # Load config
-        with open(config_path, 'r') as f:
+    def __init__(self, artifacts_path: str, device: torch.device = None):
+        """
+        Initializes the inferencer by loading all required artifacts from a specified run directory.
+        
+        Args:
+            artifacts_path: Path to the directory containing training artifacts 
+                            (model.pth, config.json, word_to_idx.pkl).
+            device: The torch device to run the model on.
+        """
+        print(f"🔎 Initializing QueryInferencer from artifacts: {artifacts_path}")
+        self.artifacts_path = Path(artifacts_path)
+        self.device = device or self._get_best_device()
+        
+        # Load configuration
+        with open(self.artifacts_path / 'config.json', 'r') as f:
             self.config = json.load(f)
         
-        # Define max sequence length for padding/truncation
-        self.max_seq_len = 32
-        
-        # Set device
-        self.device = self.config.get('DEVICE', 'cpu')
-        
         # Load tokenizer
-        self.tokenizer = PretrainedTokenizer(self.config['WORD_TO_IDX_PATH'])
+        self.tokenizer = PretrainedTokenizer(str(self.artifacts_path / 'word_to_idx.pkl'))
         
-        # Load pretrained embeddings
-        pretrained_embeddings = None
-        if self.config.get('EMBEDDINGS_PATH'):
-            pretrained_embeddings = np.load(self.config['EMBEDDINGS_PATH'])
+        # Add vocab size and embed_dim to config for model creation
+        self.config['VOCAB_SIZE'] = self.tokenizer.vocab_size()
+        # This info is not in the config, but required for model init.
+        # We can determine it from the saved embeddings if they exist or set a default.
+        if not 'EMBED_DIM' in self.config:
+            self.config['EMBED_DIM'] = 200 # A common default for GloVe
+
+        # Create model architecture
+        self.model = TwoTowerModel(self.config, pretrained_embeddings=None).to(self.device)
         
-        # Create model
-        model_config = {
-            'VOCAB_SIZE': self.tokenizer.vocab_size(),
-            'EMBED_DIM': pretrained_embeddings.shape[1] if pretrained_embeddings is not None else 300,
-            'HIDDEN_DIM': self.config.get('HIDDEN_DIM', 32),
-            'RNN_TYPE': self.config.get('RNN_TYPE', 'GRU'),
-            'NUM_LAYERS': self.config.get('NUM_LAYERS', 1),
-            'DROPOUT': self.config.get('DROPOUT', 0.0)
-        }
-        
-        self.model = ModelFactory.create_two_tower_model(model_config, pretrained_embeddings)
-        self.model.to(self.device)
-        
-        # Load trained model
-        if model_path:
-            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
-            
-            # Case 1: The checkpoint is the model object itself
-            if isinstance(checkpoint, torch.nn.Module):
-                self.model = checkpoint
-            # Case 2: The checkpoint is a state dictionary
-            else:
-                if 'query_encoder_state_dict' in checkpoint and 'doc_encoder_state_dict' in checkpoint:
-                    self.model.query_encoder.load_state_dict(checkpoint['query_encoder_state_dict'])
-                    self.model.doc_encoder.load_state_dict(checkpoint['doc_encoder_state_dict'])
-                elif 'model_state_dict' in checkpoint:
-                    self.model.load_state_dict(checkpoint['model_state_dict'])
-                elif 'model_state' in checkpoint:
-                    self.model.load_state_dict(checkpoint['model_state'])
-                else:
-                    self.model.load_state_dict(checkpoint)
-            
-            # Ensure backward compatibility for loaded models
-            if hasattr(self.model, 'query_encoder') and hasattr(self.model.query_encoder, '_ensure_backward_compatibility'):
-                self.model.query_encoder._ensure_backward_compatibility()
-            if hasattr(self.model, 'doc_encoder') and hasattr(self.model.doc_encoder, '_ensure_backward_compatibility'):
-                self.model.doc_encoder._ensure_backward_compatibility()
-        
+        # Load the trained model weights
+        model_path = self.artifacts_path / 'model.pth'
+        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
         self.model.eval()
-    
+        print("✅ Model, config, and tokenizer loaded successfully.")
+
     def get_query_embedding(self, query: str) -> np.ndarray:
-        """Get embedding for a query."""
+        """Generates an embedding for a given text query."""
         with torch.no_grad():
-            # Tokenize and truncate
-            token_ids = self.tokenizer.encode(query)[:self.max_seq_len]
-            
-            # Left pad if necessary
-            if len(token_ids) < self.max_seq_len:
-                padding = [0] * (self.max_seq_len - len(token_ids))
-                token_ids = padding + token_ids
+            # Tokenize and convert to tensor
+            token_ids = self.tokenizer.encode(query)
+
+            # If the query has no words in our vocabulary, return a zero vector.
+            if not token_ids:
+                print(f"⚠️ Query '{query}' contains no known tokens. Returning a zero vector.")
+                hidden_dim = self.config.get('HIDDEN_DIM', 128)
+                return np.zeros(hidden_dim, dtype=np.float32)
             
             tokens = torch.tensor(token_ids, dtype=torch.long).unsqueeze(0).to(self.device)
             
-            # Get embedding
+            # Generate embedding
             embedding = self.model.encode_query(tokens)
             return embedding.cpu().numpy().squeeze(0)
 
+    def _get_best_device(self) -> torch.device:
+        if torch.backends.mps.is_available():
+            return torch.device('mps')
+        if torch.cuda.is_available():
+            return torch.device('cuda')
+        return torch.device('cpu')
 
-if __name__ == "__main__":
-    # To test this, you need a trained model artifact
-    # Example: artifacts/two_tower_run_20250619_140401/model_epoch_10.pt
-    model_path = "artifacts/two_tower_run_20250619_163538/full_model.pth"
-    inferencer = QueryInferencer(model_path=model_path)
+if __name__ == '__main__':
+    # --- Example Usage ---
+    # This assumes you have a saved model in the specified directory
+    # You would typically run this after a training run from backend/main.py
     
-    # Test
-    query = "machine learning"
-    embedding = inferencer.get_query_embedding(query)
-    print(f"Query: '{query}'")
-    print(f"Embedding shape: {embedding.shape}")
-    print(f"Embedding norm: {np.linalg.norm(embedding):.4f}")
-    print(f"Full embedding:")
-    print(embedding) 
+    # IMPORTANT: Update this path to your latest run directory
+    ARTIFACTS_PATH = "artifacts/run_20240101_120000" # Replace with your actual run directory
+    
+    if not Path(ARTIFACTS_PATH).exists():
+        print(f"Error: Artifacts directory not found at '{ARTIFACTS_PATH}'")
+        print("Please run a training first (python backend/main.py) and update the path.")
+    else:
+        inferencer = QueryInferencer(ARTIFACTS_PATH)
+        
+        test_query = "what is machine learning"
+        embedding = inferencer.get_query_embedding(test_query)
+        
+        print(f"\nQuery: '{test_query}'")
+        print(f"Embedding Shape: {embedding.shape}")
+        print(f"Embedding L2 Norm: {np.linalg.norm(embedding):.4f}")
+        print("Embedding (first 5 values):", embedding[:5]) 
