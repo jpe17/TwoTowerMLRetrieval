@@ -28,8 +28,10 @@ class DataLoader:
         # Apply subsampling if specified
         if subsample_ratio and 0 < subsample_ratio < 1.0:
             original_size = len(df)
-            df = df.sample(frac=subsample_ratio, random_state=42).reset_index(drop=True)
-            print(f"  Subsampled from {original_size:,} to {len(df):,} queries")
+            # Use different random seeds for different datasets
+            seed = 42 if 'train' in path else (123 if 'validation' in path else 456)
+            df = df.sample(frac=subsample_ratio, random_state=seed).reset_index(drop=True)
+            print(f"  Subsampled from {original_size:,} to {len(df):,} queries (seed={seed})")
 
         # Filter valid rows with non-empty passages
         valid_mask = (df['query'].notna() & 
@@ -44,7 +46,9 @@ class DataLoader:
 
         # Generate triplets
         triplets = []
-        rng = random.Random(42)
+        # Use different seeds for different datasets
+        seed = 42 if 'train' in path else (123 if 'validation' in path else 456)
+        rng = random.Random(seed)
         for idx, row in df.iterrows():
             query = row['query']
             passages = row['passages.passage_text']
@@ -53,7 +57,7 @@ class DataLoader:
                 
             # Sample positive passages
             num_pos = min(self.num_triplets_per_query, len(passages))
-            pos_indices = random.Random(42).sample(range(len(passages)), num_pos)
+            pos_indices = random.Random(seed + idx).sample(range(len(passages)), num_pos)
             
             for i in pos_indices:
                 positive = passages[i]
@@ -75,8 +79,10 @@ class DataLoader:
         # Apply subsampling if specified
         if subsample_ratio and 0 < subsample_ratio < 1.0:
             original_size = len(df)
-            df = df.sample(frac=subsample_ratio, random_state=42).reset_index(drop=True)
-            print(f"  Subsampled from {original_size:,} to {len(df):,} queries")
+            # Use different random seeds for different datasets
+            seed = 42 if 'train' in path else (123 if 'validation' in path else 456)
+            df = df.sample(frac=subsample_ratio, random_state=seed).reset_index(drop=True)
+            print(f"  Subsampled from {original_size:,} to {len(df):,} queries (seed={seed})")
 
         # Filter valid rows with passages and is_selected
         valid_mask = (df['query'].notna() & 
@@ -89,7 +95,9 @@ class DataLoader:
 
         # Generate ranking triplets
         triplets = []
-        rng = random.Random(42)
+        # Use different seeds for different datasets
+        seed = 42 if 'train' in path else (123 if 'validation' in path else 456)
+        rng = random.Random(seed)
         skipped_queries = 0
         
         for idx, row in df.iterrows():

@@ -12,25 +12,25 @@ metric:
 #   name: val_similarity_gap
 parameters:
   LR:
-    values: [0.0001, 0.0005, 0.001, 0.002]
+    values: [0.001]
   BATCH_SIZE:
-    values: [32, 64, 128, 256]
+    values: [64]
   EPOCHS:
-    values: [1]
+    values: [5]
   HIDDEN_DIM:
-    values: [32, 64, 128, 256]
+    values: [128]
   MARGIN:
-    values: [0.2, 0.5, 1.0]
+    values: [0.3]
   RNN_TYPE:
-    values: ["GRU", "LSTM"]
+    values: ["GRU"]
   NUM_LAYERS:
-    values: [1, 2, 3]
+    values: [2]
   DROPOUT:
-    values: [0.0, 0.1, 0.2, 0.3]
+    values: [0]
   LOSS_TYPE:
     values: ["triplet"]
   SUBSAMPLE_RATIO:
-    values: [0.05]
+    values: [0.1]
   SHARED_ENCODER:
     values: [false, true]
 early_terminate:
