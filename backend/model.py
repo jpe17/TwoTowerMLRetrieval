@@ -6,165 +6,109 @@ from typing import Tuple, Optional
 
 
 class RNNEncoder(nn.Module):
-    """RNN Encoder for text encoding."""
-    
-    def __init__(
-        self, 
-        vocab_size: int, 
-        embed_dim: int, 
-        hidden_dim: int, 
-        pretrained_embeddings: Optional[np.ndarray] = None,
-        rnn_type: str = 'GRU',
-        num_layers: int = 1,
-        dropout: float = 0.0,
-        embedding_dropout: float = 0.0,
-        freeze_embeddings: bool = False,
-        fine_tune_embeddings: bool = True,
-        normalize_pretrained_embeddings: bool = True,
-        normalize_output: bool = True
-    ):
-        super().__init__()
-        
-        # Embedding layer
-        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-        
-        # Load pretrained embeddings
-        if pretrained_embeddings is not None:
-            self.embedding.weight.data.copy_(torch.from_numpy(pretrained_embeddings))
-            # Optionally normalize embeddings for training stability
-            if normalize_pretrained_embeddings:
-                self.embedding.weight.data = F.normalize(self.embedding.weight.data, p=2, dim=1)
-        
-        # Control embedding training
-        if freeze_embeddings or not fine_tune_embeddings:
-            self.embedding.weight.requires_grad = False
-        
-        # Embedding dropout for regularization
-        self.embedding_dropout = nn.Dropout(embedding_dropout)
-        
-        # Store normalization preference
-        self.normalize_output = normalize_output
-        
-        # RNN layer with optimized dimensions for GloVe
-        if rnn_type.upper() == 'GRU':
-            self.rnn = nn.GRU(
-                embed_dim, hidden_dim, 
-                num_layers=num_layers,
-                batch_first=True, 
-                dropout=dropout if num_layers > 1 else 0,
-                bidirectional=False  # Keep unidirectional for efficiency
-            )
-        elif rnn_type.upper() == 'LSTM':
-            self.rnn = nn.LSTM(
-                embed_dim, hidden_dim, 
-                num_layers=num_layers,
-                batch_first=True, 
-                dropout=dropout if num_layers > 1 else 0,
-                bidirectional=False
-            )
-        else:
-            self.rnn = nn.RNN(
-                embed_dim, hidden_dim, 
-                num_layers=num_layers,
-                batch_first=True, 
-                dropout=dropout if num_layers > 1 else 0,
-                bidirectional=False
-            )
-        
-        self.rnn_type = rnn_type.upper()
-        self.hidden_dim = hidden_dim
-        
-        # Additional normalization layer for better stability with GloVe
-        self.layer_norm = nn.LayerNorm(hidden_dim)
-    
-    def _ensure_backward_compatibility(self):
-        """Ensure backward compatibility for models saved without certain attributes."""
-        if not hasattr(self, 'embedding_dropout'):
-            self.embedding_dropout = nn.Dropout(0.0)
-        if not hasattr(self, 'layer_norm'):
-            self.layer_norm = nn.LayerNorm(self.hidden_dim)
+    """A much simpler RNN encoder that keeps only the essentials."""
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Embedding
-        x = self.embedding(x)
-        
-        # Apply embedding dropout if available (for backward compatibility)
-        if hasattr(self, 'embedding_dropout'):
-            x = self.embedding_dropout(x)
-        
-        # RNN
-        if self.rnn_type == 'LSTM':
-            _, (h_n, _) = self.rnn(x)
-        else:
-            _, h_n = self.rnn(x)
-        
-        # Use last layer hidden state
-        hidden = h_n[-1]
-        
-        # Apply layer normalization for stability
-        hidden = self.layer_norm(hidden)
-        
-        # Conditionally normalize output
-        if getattr(self, 'normalize_output', True):  # Default to True for backward compatibility
-            return F.normalize(hidden, p=2, dim=1)
-        else:
-            return hidden
-
-
-class TwoTowerModel(nn.Module):
-    """Two-tower model with separate encoders for queries and documents."""
-    
     def __init__(
         self,
         vocab_size: int,
         embed_dim: int,
         hidden_dim: int,
         pretrained_embeddings: Optional[np.ndarray] = None,
-        **encoder_kwargs
+        rnn_type: str = "GRU",
+        num_layers: int = 1,
+        dropout: float = 0.0,               # kept for API-compat but unused
+        embedding_dropout: float = 0.0,     # kept for API-compat but unused
+        freeze_embeddings: bool = False,
+        fine_tune_embeddings: bool = True,
+        normalize_pretrained_embeddings: bool = True,
+        normalize_output: bool = True,
+        **unused_kwargs,                    # absorb any extra args passed by old configs
     ):
         super().__init__()
-        
-        # Print once when loading embeddings
+
+        # Word embeddings
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+
+        # Load optional pretrained weights
         if pretrained_embeddings is not None:
-            print(f"Loading pretrained embeddings: {pretrained_embeddings.shape}")
-            print(f"GloVe embedding dimension: {embed_dim}")
-        
+            self.embedding.weight.data.copy_(torch.from_numpy(pretrained_embeddings))
+            if normalize_pretrained_embeddings:
+                self.embedding.weight.data = F.normalize(
+                    self.embedding.weight.data, p=2, dim=1
+                )
+
+        # Optionally freeze embeddings
+        if freeze_embeddings or not fine_tune_embeddings:
+            self.embedding.weight.requires_grad_(False)
+
+        # Very small RNN stack – default 1-layer, unidirectional
+        rnn_type = rnn_type.upper()
+        if rnn_type == "GRU":
+            self.rnn = nn.GRU(embed_dim, hidden_dim, num_layers=num_layers, batch_first=True)
+        elif rnn_type == "LSTM":
+            self.rnn = nn.LSTM(embed_dim, hidden_dim, num_layers=num_layers, batch_first=True)
+        else:
+            self.rnn = nn.RNN(embed_dim, hidden_dim, num_layers=num_layers, batch_first=True)
+
+        self.rnn_type = rnn_type
+        self.normalize_output = normalize_output
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Shape: (batch, seq_len) → (batch, seq_len, embed_dim)
+        x = self.embedding(x)
+
+        # RNN returns hidden states; we only care about the last layer's final hidden state
+        if self.rnn_type == "LSTM":
+            _, (h_n, _) = self.rnn(x)  # h_n shape: (num_layers, batch, hidden_dim)
+        else:
+            _, h_n = self.rnn(x)
+
+        # Take last layer hidden state and normalize if requested
+        output = h_n[-1]
+        if self.normalize_output:
+            output = F.normalize(output, p=2, dim=1)
+        return output
+
+
+class TwoTowerModel(nn.Module):
+    """A lightweight two-tower retrieval model with independent encoders."""
+
+    def __init__(
+        self,
+        vocab_size: int,
+        embed_dim: int,
+        hidden_dim: int,
+        pretrained_embeddings: Optional[np.ndarray] = None,
+        **encoder_kwargs,
+    ) -> None:
+        super().__init__()
+
+        # Build the twin encoders
         self.query_encoder = RNNEncoder(
-            vocab_size, embed_dim, hidden_dim, 
-            pretrained_embeddings, **encoder_kwargs
+            vocab_size,
+            embed_dim,
+            hidden_dim,
+            pretrained_embeddings,
+            **encoder_kwargs,
         )
-        
         self.doc_encoder = RNNEncoder(
-            vocab_size, embed_dim, hidden_dim, 
-            pretrained_embeddings, **encoder_kwargs
+            vocab_size,
+            embed_dim,
+            hidden_dim,
+            pretrained_embeddings,
+            **encoder_kwargs,
         )
-        
-        # Initialize RNN weights properly for GloVe
-        self._init_rnn_weights()
-    
-    def _ensure_backward_compatibility(self):
-        """Ensure backward compatibility for loaded models."""
-        if hasattr(self.query_encoder, '_ensure_backward_compatibility'):
-            self.query_encoder._ensure_backward_compatibility()
-        if hasattr(self.doc_encoder, '_ensure_backward_compatibility'):
-            self.doc_encoder._ensure_backward_compatibility()
-        
-    def _init_rnn_weights(self):
-        """Initialize RNN weights using Xavier initialization for better training with GloVe."""
-        for encoder in [self.query_encoder, self.doc_encoder]:
-            for name, param in encoder.rnn.named_parameters():
-                if 'weight' in name:
-                    nn.init.xavier_uniform_(param)
-                elif 'bias' in name:
-                    nn.init.zeros_(param)
-    
+
+    # Convenience wrappers
     def encode_query(self, query: torch.Tensor) -> torch.Tensor:
         return self.query_encoder(query)
-    
+
     def encode_document(self, document: torch.Tensor) -> torch.Tensor:
         return self.doc_encoder(document)
-    
-    def forward(self, query: torch.Tensor, document: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+
+    def forward(
+        self, query: torch.Tensor, document: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.encode_query(query), self.encode_document(document)
 
 
