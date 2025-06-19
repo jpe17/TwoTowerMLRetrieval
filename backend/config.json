@@ -6,7 +6,7 @@
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
     
     "_COMMENT_SAMPLING": "Reduced subsample for faster iteration during hyperparameter tuning",
-    "SUBSAMPLE_RATIO": 0.001,
+    "SUBSAMPLE_RATIO": 0.01,
     "NUM_TRIPLETS_PER_QUERY": 10,
     
     "_COMMENT_MODEL_ARCHITECTURE": "Optimized for 200-dim GloVe embeddings", 
@@ -28,10 +28,10 @@
     "DROPOUT": 0.15,
     
     "_COMMENT_LOSS_AND_MARGIN": "Adjusted for better similarity learning",
-    "LOSS_TYPE": "triplet_euclidean",
+    "LOSS_TYPE": "triplet",
     "MARGIN": 3,
-    "NORMALIZE_OUTPUT": false,
-    "NORMALIZE_PRETRAINED_EMBEDDINGS": false,
+    "NORMALIZE_OUTPUT": true,
+    "NORMALIZE_PRETRAINED_EMBEDDINGS": true,
     
     "_COMMENT_OPTIMIZATION": "Learning rate and scheduling",
     "LR": 5e-3,
