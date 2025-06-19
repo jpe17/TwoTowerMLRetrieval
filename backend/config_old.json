@@ -1,46 +1,39 @@
 {
     "TRAIN_DATASET_PATH": "data/ms_marco_train.parquet",
-    "VAL_DATASET_PATH": "data/ms_marco_validation.parquet", 
+    "VAL_DATASET_PATH": "data/ms_marco_validation.parquet",
     "TEST_DATASET_PATH": "data/ms_marco_test.parquet",
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
-    
     "_COMMENT_SAMPLING": "Reduced subsample for faster iteration during hyperparameter tuning",
-    "SUBSAMPLE_RATIO": 0.005,
-    "NUM_TRIPLETS_PER_QUERY": 8,
-    
-    "_COMMENT_MODEL_ARCHITECTURE": "Optimized for 200-dim GloVe embeddings", 
-    "EMBED_DIM": 200,
-    "HIDDEN_DIM": 384,
+    "SUBSAMPLE_RATIO": 0.05,
+    "NUM_TRIPLETS_PER_QUERY": 10,
+    "_COMMENT_MODEL_ARCHITECTURE": "Optimized for 200-dim GloVe embeddings",
+    "EMBED_DIM": 256,
+    "HIDDEN_DIM": 256,
     "NUM_LAYERS": 2,
     "RNN_TYPE": "GRU",
-    
     "_COMMENT_GLOVE_OPTIMIZATION": "Specific optimizations for GloVe embeddings",
     "FREEZE_EMBEDDINGS": false,
-    "EMBEDDING_DROPOUT": 0.1,
+    "EMBEDDING_DROPOUT": 0.15,
     "FINE_TUNE_EMBEDDINGS": true,
     "EMBEDDING_LEARNING_RATE_FACTOR": 0.1,
-    
     "_COMMENT_TRAINING_PARAMS": "Optimized training parameters",
-    "BATCH_SIZE": 1024,
+    "BATCH_SIZE": 512,
     "EPOCHS": 3,
     "DEVICE": "mps",
-    "DROPOUT": 0.15,
-    
+    "DROPOUT": 0.1,
     "_COMMENT_LOSS_AND_MARGIN": "Adjusted for better similarity learning",
     "LOSS_TYPE": "triplet",
-    "MARGIN": 0.5,
-    
+    "MARGIN": 0.3,
     "_COMMENT_OPTIMIZATION": "Learning rate and scheduling",
-    "LR": 5e-3,
-    "MAX_LR": 1e-2,
+    "LR": 0.003,
+    "MAX_LR": 0.01,
     "SCHEDULER_TYPE": "cosine_with_warmup",
     "WARMUP_PCT": 0.2,
     "DIV_FACTOR": 4,
     "FINAL_DIV_FACTOR": 20,
     "GRAD_CLIP": 0.5,
-    
     "_COMMENT_SYSTEM": "System optimization settings",
-    "MEMORY_CLEANUP_FREQUENCY": 25,
+    "MEMORY_CLEANUP_FREQUENCY": 50,
     "TASK_MODE": "retrieval"
-} 
+}

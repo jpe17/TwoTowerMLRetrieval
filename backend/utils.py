@@ -143,22 +143,23 @@ def create_model_and_trainer(config, pretrained_embeddings, device, checkpoint_p
     if checkpoint_path:
         print(f"📥 Loading model from checkpoint: {checkpoint_path}")
         # Load model artifacts (includes model state, optimizer state, config)
-        loaded_artifacts = load_model_artifacts(checkpoint_path)
+        loaded_model, loaded_config, training_info = load_model_artifacts(checkpoint_path)
         
-        # Create model with loaded config
-        model = ModelFactory.create_two_tower_model(loaded_artifacts['config'], pretrained_embeddings)
+        # Use the loaded model directly
+        model = loaded_model
         model = model.to(device)
         
-        # Load model state
-        model.load_state_dict(loaded_artifacts['model_state'])
+        # Create trainer with loaded config
+        trainer = TwoTowerTrainer(model, loaded_config, device)
         
-        # Create trainer and restore optimizer state
-        trainer = TwoTowerTrainer(model, loaded_artifacts['config'], device)
-        if 'optimizer_state' in loaded_artifacts:
-            trainer.optimizer.load_state_dict(loaded_artifacts['optimizer_state'])
+        # Load checkpoint to get optimizer state
+        checkpoint_path_file = os.path.join(checkpoint_path, 'model_checkpoint.pth')
+        checkpoint = torch.load(checkpoint_path_file, map_location=device)
+        if 'optimizer_state_dict' in checkpoint:
+            trainer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             
         # Update config with loaded config
-        config.update(loaded_artifacts['config'])
+        config.update(loaded_config)
         
         print("✅ Model restored successfully from checkpoint")
     else:
