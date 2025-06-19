@@ -4,12 +4,12 @@
     "TEST_DATASET_PATH": "data/ms_marco_test.parquet",
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
-    "SUBSAMPLE_RATIO": 0.1,
+    "SUBSAMPLE_RATIO": 0.01,
     "NUM_TRIPLETS_PER_QUERY": 10,
     "HIDDEN_DIM": 256,
-    "MARGIN": 0.3,
+    "MARGIN": 0.5,
     "BATCH_SIZE": 2048,
-    "EPOCHS": 2,
+    "EPOCHS": 1,
     "DEVICE": "mps",
     "NUM_LAYERS": 2,
     "MEMORY_CLEANUP_FREQUENCY": 50,
@@ -17,13 +17,13 @@
     "RNN_TYPE": "GRU",
     "DROPOUT": 0,
     "LOSS_TYPE": "triplet",
-    "MAX_LR": 1e-4,
+    "MAX_LR": 1e-2,
     "DIV_FACTOR": 2,
     "FINAL_DIV_FACTOR": 10,
     "WARMUP_PCT": 0.3,
     "GRAD_CLIP": 1.0,
     "SCHEDULER_TYPE": "exponential", 
-    "GAMMA": 0.95,   
-    "LR": 1e-4
+    "GAMMA": 0.4,   
+    "LR": 1e-2
 } 
 

@@ -11,9 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import wandb
-import argparse
 import numpy as np
-import pickle
 import torch.nn.functional as F
 
 load_dotenv()  # Loads .env file
@@ -33,82 +31,9 @@ from evaluate import run_evaluation
 from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
     load_pretrained_embeddings, print_model_summary, load_model_artifacts,
-    save_model_artifacts
+    save_model_artifacts, parse_args, load_embeddings_and_maps, create_model_and_trainer
 )
 
-
-def create_model_and_trainer(config, pretrained_embeddings, device, checkpoint_path=None):
-    """Create two-tower model and trainer."""
-    print("\n🏗️  Creating two-tower model...")
-    
-    if checkpoint_path:
-        print(f"📥 Loading model from checkpoint: {checkpoint_path}")
-        # Load model artifacts (includes model state, optimizer state, config)
-        loaded_artifacts = load_model_artifacts(checkpoint_path)
-        
-        # Create model with loaded config
-        model = ModelFactory.create_two_tower_model(loaded_artifacts['config'], pretrained_embeddings)
-        model = model.to(device)
-        
-        # Load model state
-        model.load_state_dict(loaded_artifacts['model_state'])
-        
-        # Create trainer and restore optimizer state
-        trainer = TwoTowerTrainer(model, loaded_artifacts['config'], device)
-        if 'optimizer_state' in loaded_artifacts:
-            trainer.optimizer.load_state_dict(loaded_artifacts['optimizer_state'])
-            
-        # Update config with loaded config
-        config.update(loaded_artifacts['config'])
-        
-        print("✅ Model restored successfully from checkpoint")
-    else:
-        model = ModelFactory.create_two_tower_model(config, pretrained_embeddings)
-        model = model.to(device)
-        trainer = TwoTowerTrainer(model, config, device)
-    
-    return model, trainer
-
-
-def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description='Two-Tower Model Training')
-    parser.add_argument(
-        '--checkpoint', '-c',
-        type=str,
-        help='Path to checkpoint directory to resume training from'
-    )
-    return parser.parse_args()
-
-
-def load_embeddings_and_maps(artifacts_path, device):
-    """Loads all necessary embeddings and mappings from an artifacts directory."""
-    print(f"📂 Loading pre-computed embeddings from {artifacts_path}...")
-    
-    try:
-        # Load documents
-        doc_embeddings = torch.from_numpy(np.load(f"{artifacts_path}/document_embeddings.npy")).to(device)
-        with open(f"{artifacts_path}/doc_to_idx.pkl", 'rb') as f:
-            doc_to_idx = pickle.load(f)
-        
-        # Load queries
-        query_embeddings = torch.from_numpy(np.load(f"{artifacts_path}/query_embeddings.npy")).to(device)
-        with open(f"{artifacts_path}/query_to_idx.pkl", 'rb') as f:
-            query_to_idx = pickle.load(f)
-            
-        # Create reverse mapping to get document text from its index
-        idx_to_doc = {idx: doc for doc, idx in doc_to_idx.items()}
-
-        print(f"  ✅ Loaded {len(doc_to_idx):,} document embeddings.")
-        print(f"  ✅ Loaded {len(query_to_idx):,} query embeddings.")
-        
-        return doc_embeddings, doc_to_idx, idx_to_doc, query_embeddings, query_to_idx
-        
-    except FileNotFoundError as e:
-        print(f"❌ Error: {e}.")
-        print(f"   Ensure the path '{artifacts_path}' is correct and contains the required .npy and .pkl files.")
-        print("   💡 Did you run training with the 'save_doc_embeddings=True' flag?")
-        return None, None, None, None, None
 
 
 def main():
