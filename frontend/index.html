@@ -5,432 +5,154 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Google by MLX8 - Document Search</title>
   <style>
-    * {
+    body {
+      font-family: Arial, sans-serif;
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background-color: #fff;
-      color: #3c4043;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .header {
-      padding: 20px;
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-    }
-
-    .main-container {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      margin-top: -100px;
-    }
-
-    .logo {
-      font-size: 70px;
-      font-weight: 400;
-      color: #4285f4;
-      margin-bottom: 30px;
-      letter-spacing: -3px;
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-
-    .logo .g1 { color: #4285f4; }
-    .logo .o1 { color: #ea4335; }
-    .logo .o2 { color: #fbbc05; }
-    .logo .g2 { color: #4285f4; }
-    .logo .l { color: #34a853; }
-    .logo .e { color: #ea4335; }
-
-    .logo .by-mlx8 {
-      font-size: 24px;
-      color: #9aa0a6;
-      margin-left: 15px;
-      font-weight: 300;
-      font-style: italic;
-    }
-
-    .search-container {
-      width: 100%;
-      max-width: 584px;
-      margin-bottom: 35px;
-    }
-
-    .search-box {
-      width: 100%;
-      height: 44px;
-      border: 1px solid #dfe1e5;
-      border-radius: 24px;
-      padding: 0 16px 0 16px;
-      font-size: 16px;
-      outline: none;
-      transition: box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out;
       background: #fff;
-    }
-
-    .search-box:hover {
-      border-color: #dfe1e5;
-      box-shadow: 0 2px 5px 1px rgba(64,60,67,.16);
-    }
-
-    .search-box:focus {
-      border-color: #4285f4;
-      box-shadow: 0 2px 5px 1px rgba(64,60,67,.16);
-    }
-
-    .search-buttons {
-      text-align: center;
-      margin-top: 30px;
-    }
-
-    .search-btn {
-      background-color: #f8f9fa;
-      border: 1px solid #f8f9fa;
-      border-radius: 4px;
-      color: #3c4043;
-      font-size: 14px;
-      margin: 11px 4px;
-      padding: 0 20px;
-      line-height: 27px;
-      height: 36px;
-      min-width: 54px;
-      cursor: pointer;
-      transition: all 0.1s ease-in-out;
-      outline: none;
-    }
-
-    .search-btn:hover {
-      box-shadow: 0 1px 1px rgba(0,0,0,.1);
-      background-color: #f1f3f4;
-      border: 1px solid #dadce0;
       color: #202124;
     }
-
-    .search-btn:focus {
-      border: 1px solid #4285f4;
-      outline: none;
-    }
-
-    .results-container {
-      width: 100%;
+    .main-container {
       max-width: 652px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .logo {
+      font-size: 38px;
+      color: #4285f4;
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 30px;
+    }
+    .search-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .search-box {
+      width: 100%;
+      max-width: 600px;
+      padding: 10px 15px;
+      font-size: 16px;
+      border: 1px solid #dfe1e5;
+      border-radius: 24px;
+      box-shadow: none;
+    }
+    .search-btn {
       margin-top: 20px;
-    }
-
-    .results-stats {
-      color: #70757a;
+      padding: 10px 20px;
       font-size: 14px;
-      margin-bottom: 20px;
-      padding-left: 12px;
+      border: 1px solid #dfe1e5;
+      border-radius: 4px;
+      background: #f8f9fa;
+      cursor: pointer;
     }
-
-    .results-list {
-      list-style: none;
+    .search-btn:hover {
+      background: #f1f3f4;
     }
-
     .result-item {
-      margin-bottom: 20px;
-      padding: 0 12px;
+      margin-bottom: 30px;
+      display: flex;
+      gap: 10px;
     }
-
-    .result-link {
+    .result-score {
+      min-width: 60px;
+      font-size: 14px;
+      font-weight: bold;
+      color: #34a853;
+      text-align: right;
+    }
+    .result-content {
+      flex: 1;
+    }
+    .result-title {
+      font-size: 18px;
       color: #1a0dab;
       text-decoration: none;
-      font-size: 20px;
-      line-height: 1.3;
-      font-weight: 400;
-      cursor: pointer;
-      transition: color 0.1s ease-in-out;
+      display: inline-block;
+      margin-bottom: 4px;
     }
-
-    .result-link:hover {
-      text-decoration: underline;
-    }
-
-    .result-link:visited {
-      color: #681da8;
-    }
-
     .result-snippet {
+      font-size: 14px;
       color: #4d5156;
+    }
+    .results-stats {
       font-size: 14px;
-      line-height: 1.58;
-      margin-top: 4px;
-      max-width: 600px;
-    }
-
-    .result-id {
       color: #70757a;
-      font-size: 12px;
-      margin-top: 2px;
-    }
-
-    .no-results {
-      text-align: center;
-      color: #70757a;
-      font-size: 16px;
-      margin-top: 40px;
-    }
-
-    .loading {
-      text-align: center;
-      color: #70757a;
-      font-size: 14px;
-      margin-top: 20px;
-    }
-
-    .fun-fact {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: #9aa0a6;
-      font-size: 12px;
-      font-style: italic;
-      text-align: center;
-      max-width: 400px;
-    }
-
-    /* Animations */
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes wiggle {
-      0% { transform: rotate(0deg); }
-      25% { transform: rotate(1deg); }
-      75% { transform: rotate(-1deg); }
-      100% { transform: rotate(0deg); }
-    }
-
-    .result-item {
-      animation: fadeIn 0.3s ease-out forwards;
-    }
-
-    .logo:hover {
-      animation: wiggle 0.5s ease-in-out;
-    }
-
-    /* Responsive design */
-    @media (max-width: 768px) {
-      .logo {
-        font-size: 50px;
-        margin-bottom: 20px;
-        flex-direction: column;
-      }
-      
-      .logo .by-mlx8 {
-        margin-left: 0;
-        margin-top: 5px;
-        font-size: 18px;
-      }
-      
-      .main-container {
-        margin-top: -50px;
-      }
-      
-      .search-container {
-        max-width: 90%;
-      }
+      margin-bottom: 20px;
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <!-- Space for potential nav items -->
-  </div>
-
   <div class="main-container">
-    <div class="logo">
-      <div>
-        <span class="g1">G</span><span class="o1">o</span><span class="o2">o</span><span class="g2">g</span><span class="l">l</span><span class="e">e</span>
-      </div>
-      <span class="by-mlx8">by MLX8</span>
-    </div>
-
+    <div class="logo">Google by MLX8</div>
     <div class="search-container">
-      <input type="text" id="queryInput" class="search-box" placeholder="Search the universe of documents... 🚀" autocomplete="off">
+      <input type="text" id="queryInput" class="search-box" placeholder="Search MLX8...">
+    </div>
+    <div style="text-align:center">
+      <button class="search-btn" onclick="performSearch()">Search</button>
     </div>
 
-    <div class="search-buttons">
-      <button class="search-btn" onclick="performSearch()">MLX8 Search</button>
-      <button class="search-btn" onclick="feelingLucky()">I'm Feeling Nerdy</button>
-    </div>
+    <div class="results-stats" id="resultsStats"></div>
+    <ul id="resultsList" style="list-style: none; padding-left: 0;"></ul>
 
-    <div class="results-container" id="resultsContainer" style="display: none;">
-      <div class="results-stats" id="resultsStats"></div>
-      <ul class="results-list" id="resultsList"></ul>
+    <div id="noResults" style="display:none; text-align: center; color: #70757a; margin-top: 40px;">
+      No results found.
     </div>
-
-    <div class="no-results" id="noResults" style="display: none;">
-      🤷‍♂️ No results found. Maybe try searching for something that actually exists?
-    </div>
-
-    <div class="loading" id="loading" style="display: none;">
-      🔍 Searching the digital haystack...
-    </div>
-  </div>
-
-  <div class="fun-fact" id="funFact">
-    💡 Fun fact: This search engine is powered by caffeine and machine learning dreams
   </div>
 
   <script>
-    const funFacts = [
-      "💡 Fun fact: This search engine is powered by caffeine and machine learning dreams",
-      "🤖 Did you know? Our AI reads 1000x faster than humans (and has better handwriting)",
-      "🎯 Pro tip: Type random words for surprisingly philosophical results",
-      "🚀 MLX8 fact: We're 42% more accurate than throwing darts at a document wall",
-      "🎪 Behind the scenes: Our servers are maintained by a team of very dedicated hamsters",
-      "🧠 Neural network joke: Why did the neuron break up? It lost its connection!",
-      "📚 Search wisdom: The best searches come from the heart... and proper keywords"
-    ];
-
-    let currentFactIndex = 0;
-
-    // Rotate fun facts every 5 seconds
-    setInterval(() => {
-      currentFactIndex = (currentFactIndex + 1) % funFacts.length;
-      document.getElementById('funFact').textContent = funFacts[currentFactIndex];
-    }, 5000);
-
-    // Allow Enter key to trigger search
-    document.getElementById('queryInput').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        performSearch();
-      }
-    });
-
-    // Funny placeholder rotation
-    const placeholders = [
-      "Search the universe of documents... 🚀",
-      "What secrets shall we uncover today? 🕵️",
-      "Ask me anything (I might even know it) 🤓",
-      "Type something brilliant... or random 🎲",
-      "Your wish is my search command ✨"
-    ];
-
-    setInterval(() => {
-      const input = document.getElementById('queryInput');
-      if (input !== document.activeElement) {
-        input.placeholder = placeholders[Math.floor(Math.random() * placeholders.length)];
-      }
-    }, 3000);
-
     async function performSearch() {
       const query = document.getElementById("queryInput").value.trim();
       if (!query) {
-        alert("🤔 Psst... you might want to type something first!");
+        alert("Please enter a search query.");
         return;
       }
 
-      // Show loading state
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('resultsContainer').style.display = 'none';
-      document.getElementById('noResults').style.display = 'none';
+      document.getElementById("resultsStats").textContent = "Searching...";
+      document.getElementById("resultsList").innerHTML = "";
+      document.getElementById("noResults").style.display = "none";
 
       try {
         const response = await fetch("http://localhost:8000/search", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query })
         });
-
         const data = await response.json();
-        
-        // Hide loading
-        document.getElementById('loading').style.display = 'none';
-        
-        const resultsList = document.getElementById("resultsList");
-        const resultsStats = document.getElementById("resultsStats");
-        const resultsContainer = document.getElementById('resultsContainer');
-        const noResults = document.getElementById('noResults');
-        
-        resultsList.innerHTML = ""; // Clear previous results
 
         if (data.results && data.results.length > 0) {
-          // Show results stats with humor
-          const resultCount = data.results.length;
-          const funnyStats = [
-            `Found ${resultCount} gems in the digital mine! ⛏️`,
-            `${resultCount} results served fresh from our neural kitchen 👨‍🍳`,
-            `Behold! ${resultCount} magnificent search results 🎭`,
-            `${resultCount} results discovered (we're quite proud) 🏆`
-          ];
-          resultsStats.textContent = funnyStats[Math.floor(Math.random() * funnyStats.length)];
-          resultsContainer.style.display = 'block';
-          
-          data.results.forEach(([id, doc], index) => {
+          document.getElementById("resultsStats").textContent = `${data.results.length} results found`;
+          const list = document.getElementById("resultsList");
+          data.results.forEach(result => {
+            const { id, doc, score } = result;
             const li = document.createElement("li");
             li.className = "result-item";
-            li.style.animationDelay = `${index * 0.1}s`;
-            
             li.innerHTML = `
-              <div class="result-link" onclick="selectResult('${id}')">${truncateText(doc, 60)}</div>
-              <div class="result-snippet">${doc}</div>
-              <div class="result-id">Document ID: ${id} 📄</div>
+              <div class="result-score">${score.toFixed(4)}</div>
+              <div class="result-content">
+                <a class="result-title" href="#" onclick="selectResult('${id}')">${truncateText(doc, 60)}</a>
+                <div class="result-snippet">${truncateText(doc, 200)}</div>
+              </div>
             `;
-            
-            resultsList.appendChild(li);
+            list.appendChild(li);
           });
         } else {
-          noResults.style.display = 'block';
+          document.getElementById("noResults").style.display = "block";
+          document.getElementById("resultsStats").textContent = "";
         }
       } catch (error) {
-        console.error('Search error:', error);
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('noResults').innerHTML = "😅 Oops! Our hamsters fell asleep. Please try again!";
-        document.getElementById('noResults').style.display = 'block';
+        console.error("Search error:", error);
+        document.getElementById("resultsStats").textContent = "An error occurred.";
       }
     }
 
     function truncateText(text, maxLength) {
-      if (text.length <= maxLength) return text;
-      return text.substring(0, maxLength) + '...';
+      return text.length <= maxLength ? text : text.substring(0, maxLength) + "...";
     }
 
     function selectResult(id) {
-      console.log('Selected result:', id);
-      // Add any result selection logic here
-      const messages = [
-        "Great choice! 🎯",
-        "Excellent selection! 👌",
-        "You've got good taste! 😎",
-        "Nice pick! 🎪"
-      ];
-      console.log(messages[Math.floor(Math.random() * messages.length)]);
-    }
-
-    function feelingLucky() {
-      const luckyQueries = [
-        'the meaning of machine learning 🤖',
-        'secrets of neural networks 🧠', 
-        'artificial intelligence mysteries 🔮',
-        'data science magic ✨',
-        'deep learning adventures 🚀',
-        'algorithmic poetry 📝',
-        'computational creativity 🎨'
-      ];
-      const randomQuery = luckyQueries[Math.floor(Math.random() * luckyQueries.length)];
-      document.getElementById('queryInput').value = randomQuery;
-      setTimeout(() => performSearch(), 500); // Small delay for effect
+      alert("Selected document ID: " + id);
     }
   </script>
 </body>

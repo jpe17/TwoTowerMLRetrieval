@@ -1,0 +1,6 @@
+{
+    "EMBEDDINGS_PATH": "../data/embeddings.npy",
+    "WORD_TO_IDX_PATH": "../data/word_to_idx.pkl",
+    "HIDDEN_DIM": 256
+} 
+
