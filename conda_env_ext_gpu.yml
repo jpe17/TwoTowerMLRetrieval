@@ -222,7 +222,6 @@ dependencies:
   - tzdata=2025b=h04d1e81_0
   - unicodedata2=15.1.0=py310h5eee18b_1
   - urllib3=2.3.0=py310h06a4308_0
-  - wandb=0.13.1=pyhd8ed1ab_0
   - wcwidth=0.2.5=pyhd3eb1b0_0
   - webencodings=0.5.1=py310h06a4308_1
   - websocket-client=1.8.0=py310h06a4308_0
@@ -241,4 +240,17 @@ dependencies:
   - zeromq=4.3.5=h6a678d5_0
   - zlib=1.2.13=h5eee18b_1
   - zstd=1.5.6=hc292b87_0
+  - pip:
+      - annotated-types==0.7.0
+      - cramjam==2.10.0
+      - dotenv==0.9.9
+      - fastparquet==2024.11.0
+      - fsspec==2025.5.1
+      - gdown==5.2.0
+      - pydantic==2.11.7
+      - pydantic-core==2.33.2
+      - python-dotenv==1.1.0
+      - tqdm==4.67.1
+      - typing-inspection==0.4.1
+      - wandb==0.20.1
 prefix: /root/miniconda3/envs/two_tower_env

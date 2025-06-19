@@ -141,7 +141,7 @@ def run_evaluation(artifacts_path: str, config: dict, device: torch.device):
 if __name__ == "__main__":
     # --- Standalone Execution Config ---
     # This allows running `python backend/evaluate.py` directly
-    ARTIFACTS_PATH = "artifacts/two_tower_run_20250619_142325"
+    ARTIFACTS_PATH = "artifacts/two_tower_run_20250619_163538"
     CONFIG_PATH = "backend/config.json"
     # -------------------------------------
     

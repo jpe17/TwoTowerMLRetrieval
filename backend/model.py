@@ -70,11 +70,21 @@ class RNNEncoder(nn.Module):
         
         # Additional normalization layer for better stability with GloVe
         self.layer_norm = nn.LayerNorm(hidden_dim)
+    
+    def _ensure_backward_compatibility(self):
+        """Ensure backward compatibility for models saved without certain attributes."""
+        if not hasattr(self, 'embedding_dropout'):
+            self.embedding_dropout = nn.Dropout(0.0)
+        if not hasattr(self, 'layer_norm'):
+            self.layer_norm = nn.LayerNorm(self.hidden_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Embedding
         x = self.embedding(x)
-        x = self.embedding_dropout(x)
+        
+        # Apply embedding dropout if available (for backward compatibility)
+        if hasattr(self, 'embedding_dropout'):
+            x = self.embedding_dropout(x)
         
         # RNN
         if self.rnn_type == 'LSTM':
@@ -122,6 +132,13 @@ class TwoTowerModel(nn.Module):
         
         # Initialize RNN weights properly for GloVe
         self._init_rnn_weights()
+    
+    def _ensure_backward_compatibility(self):
+        """Ensure backward compatibility for loaded models."""
+        if hasattr(self.query_encoder, '_ensure_backward_compatibility'):
+            self.query_encoder._ensure_backward_compatibility()
+        if hasattr(self.doc_encoder, '_ensure_backward_compatibility'):
+            self.doc_encoder._ensure_backward_compatibility()
         
     def _init_rnn_weights(self):
         """Initialize RNN weights using Xavier initialization for better training with GloVe."""

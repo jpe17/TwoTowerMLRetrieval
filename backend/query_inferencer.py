@@ -62,6 +62,12 @@ class QueryInferencer:
                     self.model.load_state_dict(checkpoint['model_state'])
                 else:
                     self.model.load_state_dict(checkpoint)
+            
+            # Ensure backward compatibility for loaded models
+            if hasattr(self.model, 'query_encoder') and hasattr(self.model.query_encoder, '_ensure_backward_compatibility'):
+                self.model.query_encoder._ensure_backward_compatibility()
+            if hasattr(self.model, 'doc_encoder') and hasattr(self.model.doc_encoder, '_ensure_backward_compatibility'):
+                self.model.doc_encoder._ensure_backward_compatibility()
         
         self.model.eval()
     
@@ -86,7 +92,7 @@ class QueryInferencer:
 if __name__ == "__main__":
     # To test this, you need a trained model artifact
     # Example: artifacts/two_tower_run_20250619_140401/model_epoch_10.pt
-    model_path = "artifacts/two_tower_run_20250619_142325/full_model.pth"
+    model_path = "artifacts/two_tower_run_20250619_163538/full_model.pth"
     inferencer = QueryInferencer(model_path=model_path)
     
     # Test
