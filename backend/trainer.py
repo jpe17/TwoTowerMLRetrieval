@@ -185,6 +185,58 @@ class TwoTowerTrainer:
         
         return metrics
     
+    def evaluate_large_scale(self, val_loader, max_batches=50, max_docs=1000):
+        """Large-scale evaluation using multiple batches to create a bigger document pool."""
+        self.model.eval()
+        
+        all_query_embs = []
+        all_doc_embs = []
+        all_pos_labels = []
+        
+        with torch.no_grad():
+            doc_count = 0
+            for batch_idx, (queries, pos_docs, neg_docs) in enumerate(val_loader):
+                if batch_idx >= max_batches or doc_count >= max_docs:
+                    break
+                
+                # Move to device
+                queries = queries.to(self.device, non_blocking=True)
+                pos_docs = pos_docs.to(self.device, non_blocking=True)
+                
+                # Get embeddings
+                query_emb = self.model.encode_query(queries)
+                pos_emb = self.model.encode_document(pos_docs)
+                
+                # Accumulate embeddings
+                all_query_embs.append(query_emb)
+                all_doc_embs.append(pos_emb)
+                
+                # Create labels: each query's positive doc is at the current doc_count + its batch position
+                batch_size = query_emb.size(0)
+                pos_labels = torch.arange(doc_count, doc_count + batch_size, device=query_emb.device)
+                all_pos_labels.append(pos_labels)
+                
+                doc_count += batch_size
+        
+        if not all_query_embs:
+            return {}
+        
+        # Concatenate all embeddings
+        query_embs = torch.cat(all_query_embs, dim=0)  # [total_queries, hidden_dim]
+        doc_embs = torch.cat(all_doc_embs, dim=0)      # [total_docs, hidden_dim]  
+        pos_labels = torch.cat(all_pos_labels, dim=0)  # [total_queries]
+        
+        print(f"\n     🔍 Large-scale evaluation: {query_embs.size(0)} queries vs {doc_embs.size(0)} docs")
+        
+        # Compute metrics
+        retrieval_metrics = self.compute_retrieval_metrics_fixed(query_embs, doc_embs, pos_labels, k_values=[5, 10, 20])
+        ranking_metrics = self.compute_ranking_metrics_fixed(query_embs, doc_embs, pos_labels, k_values=[5, 10, 20])
+        
+        # Combine metrics
+        final_metrics = {**retrieval_metrics, **ranking_metrics}
+        
+        return final_metrics
+    
     def evaluate_batch(self, val_loader, max_batches=3):
         """Quick evaluation with both retrieval and ranking metrics."""
         self.model.eval()
@@ -344,20 +396,29 @@ class TwoTowerTrainer:
                 if val_loader is not None:
                     # Compute validation loss on more batches for better estimates
                     val_loss = self.compute_val_loss_quick(val_loader, max_batches=10)
-                    eval_metrics = self.evaluate_batch(val_loader, max_batches=10)
                     
-                    print(f"\n     🎯 EVALUATION METRICS at Batch {batch_count}")
+                    # Use large-scale evaluation every 200 batches, small-scale otherwise
+                    if batch_count % 200 == 0 or batch_count == 1:
+                        eval_metrics = self.evaluate_large_scale(val_loader, max_batches=50, max_docs=1000)
+                        eval_type = "LARGE-SCALE"
+                    else:
+                        eval_metrics = self.evaluate_batch(val_loader, max_batches=10)
+                        eval_type = "QUICK"
+                    
+                    print(f"\n     🎯 {eval_type} EVALUATION at Batch {batch_count}")
                     print(f"     ┌─ Train Loss: {loss.item():6.4f} │ Val Loss: {val_loss:6.4f}")
-                    print(f"     ├─ Retrieval  │ R@5: {eval_metrics.get('recall_at_5', 0):6.3f} │ R@10: {eval_metrics.get('recall_at_10', 0):6.3f}")
-                    print(f"     └─ Ranking    │ MRR: {eval_metrics.get('mrr', 0):6.3f} │ NDCG@5: {eval_metrics.get('ndcg_at_5', 0):6.3f}")
+                    print(f"     ├─ Retrieval  │ R@5: {eval_metrics.get('recall_at_5', 0):6.3f} │ R@10: {eval_metrics.get('recall_at_10', 0):6.3f} │ R@20: {eval_metrics.get('recall_at_20', 0):6.3f}")
+                    print(f"     └─ Ranking    │ MRR: {eval_metrics.get('mrr', 0):6.3f} │ NDCG@5: {eval_metrics.get('ndcg_at_5', 0):6.3f} │ NDCG@10: {eval_metrics.get('ndcg_at_10', 0):6.3f}")
                     
                     # Add validation metrics to the same WandB log
                     wandb_log.update({
                         "val_loss": val_loss,
                         "recall_at_5": eval_metrics.get('recall_at_5', 0),
                         "recall_at_10": eval_metrics.get('recall_at_10', 0),
+                        "recall_at_20": eval_metrics.get('recall_at_20', 0),
                         "mrr": eval_metrics.get('mrr', 0),
-                        "ndcg_at_5": eval_metrics.get('ndcg_at_5', 0)
+                        "ndcg_at_5": eval_metrics.get('ndcg_at_5', 0),
+                        "ndcg_at_10": eval_metrics.get('ndcg_at_10', 0)
                     })
                     
                     # Track best validation loss
