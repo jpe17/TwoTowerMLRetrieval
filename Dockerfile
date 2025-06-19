@@ -14,9 +14,9 @@ RUN pip install --no-cache-dir --trusted-host pypi.python.org -r requirements.tx
 # Copy the rest of your application's code into the container
 COPY . .
 
-# Make port 8000 available to the world outside this container
-EXPOSE 8000
+# Make port 8888 available to the world outside this container
+EXPOSE 8888
 
 # Run the uvicorn server when the container launches
 # It will serve your FastAPI application from frontend/main.py
-CMD ["uvicorn", "frontend.main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "frontend.main:app", "--host", "0.0.0.0", "--port", "8888"] 

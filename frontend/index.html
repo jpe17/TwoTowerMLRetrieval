@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Google by MLX8 - Document Search</title>
+  <title>Google - Document Search</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family: arial, sans-serif;
       margin: 0;
       padding: 0;
       background: #fff;
@@ -17,104 +17,224 @@
       margin: 40px auto;
       padding: 0 20px;
     }
-    .logo {
-      font-size: 38px;
-      color: #4285f4;
+    .logo-container {
       text-align: center;
-      font-weight: bold;
-      margin-bottom: 30px;
+      margin-bottom: 25px;
     }
+    .google-logo {
+      font-size: 90px;
+      font-weight: normal;
+      margin: 0;
+      line-height: 1;
+    }
+    .google-g1 { color: #4285f4; } /* Blue */
+    .google-o1 { color: #ea4335; } /* Red */
+    .google-o2 { color: #fbbc05; } /* Yellow */
+    .google-g2 { color: #4285f4; } /* Blue */
+    .google-l { color: #34a853; }  /* Green */
+    .google-e { color: #ea4335; }  /* Red */
+    
+    .by-mlx8 {
+      font-size: 13px;
+      color: #70757a;
+      margin-top: -5px;
+      font-weight: normal;
+    }
+    
     .search-container {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 20px;
+      position: relative;
+      max-width: 584px;
+      margin: 0 auto 30px;
     }
     .search-box {
       width: 100%;
-      max-width: 600px;
-      padding: 10px 15px;
+      padding: 12px 45px 12px 16px;
       font-size: 16px;
       border: 1px solid #dfe1e5;
       border-radius: 24px;
+      outline: none;
       box-shadow: none;
+      transition: box-shadow 0.2s;
     }
-    .search-btn {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 14px;
-      border: 1px solid #dfe1e5;
-      border-radius: 4px;
-      background: #f8f9fa;
+    .search-box:hover {
+      box-shadow: 0 2px 5px 1px rgba(64,60,67,0.16);
+    }
+    .search-box:focus {
+      box-shadow: 0 2px 5px 1px rgba(64,60,67,0.16);
+      border-color: transparent;
+    }
+    .search-icon {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 20px;
+      height: 20px;
       cursor: pointer;
     }
-    .search-btn:hover {
-      background: #f1f3f4;
-    }
-    .result-item {
+    
+    .buttons-container {
+      text-align: center;
       margin-bottom: 30px;
-      display: flex;
-      gap: 10px;
     }
-    .result-score {
-      min-width: 60px;
+    .search-btn {
+      background: #f8f9fa;
+      border: 1px solid #f8f9fa;
+      border-radius: 4px;
+      color: #3c4043;
+      font-family: arial, sans-serif;
       font-size: 14px;
-      font-weight: bold;
-      color: #34a853;
-      text-align: right;
+      margin: 11px 4px;
+      padding: 0 16px;
+      line-height: 27px;
+      height: 36px;
+      min-width: 54px;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
     }
-    .result-content {
-      flex: 1;
+    .search-btn:hover {
+      box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+      background-color: #f8f9fa;
+      border: 1px solid #dadce0;
+      color: #202124;
+    }
+    
+    .results-info {
+      color: #70757a;
+      font-size: 14px;
+      margin-bottom: 20px;
+      padding-left: 12px;
+    }
+    
+    .result-item {
+      margin-bottom: 25px;
+      max-width: 600px;
+    }
+    .result-url {
+      color: #202124;
+      font-size: 14px;
+      line-height: 1.3;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+    }
+    .result-favicon {
+      width: 18px;
+      height: 18px;
+      margin-right: 12px;
+      border-radius: 50%;
+      background: #f1f3f4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #5f6368;
     }
     .result-title {
-      font-size: 18px;
       color: #1a0dab;
+      font-size: 20px;
+      line-height: 1.3;
+      font-weight: normal;
       text-decoration: none;
-      display: inline-block;
+      display: block;
       margin-bottom: 4px;
+      cursor: pointer;
+    }
+    .result-title:hover {
+      text-decoration: underline;
+    }
+    .result-title:visited {
+      color: #681da8;
     }
     .result-snippet {
-      font-size: 14px;
       color: #4d5156;
-    }
-    .results-stats {
       font-size: 14px;
+      line-height: 1.58;
+      max-width: 550px;
+    }
+    .result-score {
+      color: #34a853;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    
+    .highlight {
+      background-color: #fff2cc;
+      font-weight: bold;
+      padding: 0 1px;
+    }
+    
+    .no-results {
+      text-align: center;
       color: #70757a;
-      margin-bottom: 20px;
+      margin-top: 40px;
+      display: none;
+    }
+    
+    /* Enter key support */
+    .search-box:focus {
+      outline: none;
     }
   </style>
 </head>
 <body>
   <div class="main-container">
-    <div class="logo">Google by MLX8</div>
+    <div class="logo-container">
+      <div class="google-logo">
+        <span class="google-g1">G</span><span class="google-o1">o</span><span class="google-o2">o</span><span class="google-g2">g</span><span class="google-l">l</span><span class="google-e">e</span>
+      </div>
+      <div class="by-mlx8">by MLX8</div>
+    </div>
+    
     <div class="search-container">
-      <input type="text" id="queryInput" class="search-box" placeholder="Search MLX8...">
+      <input type="text" id="queryInput" class="search-box" placeholder="Search documents..." autocomplete="off">
+      <svg class="search-icon" onclick="performSearch()" viewBox="0 0 24 24" fill="#9aa0a6">
+        <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+      </svg>
     </div>
-    <div style="text-align:center">
-      <button class="search-btn" onclick="performSearch()">Search</button>
+    
+    <div class="buttons-container">
+      <button class="search-btn" onclick="performSearch()">Google Search</button>
     </div>
 
-    <div class="results-stats" id="resultsStats"></div>
-    <ul id="resultsList" style="list-style: none; padding-left: 0;"></ul>
-
-    <div id="noResults" style="display:none; text-align: center; color: #70757a; margin-top: 40px;">
-      No results found.
+    <div class="results-info" id="resultsInfo"></div>
+    <div id="resultsList"></div>
+    <div class="no-results" id="noResults">
+      <p>Your search did not match any documents.</p>
+      <p style="margin-top: 20px; font-size: 13px;">
+        Suggestions:<br>
+        • Make sure all words are spelled correctly<br>
+        • Try different keywords<br>
+        • Try more general keywords
+      </p>
     </div>
   </div>
 
   <script>
+    // Global variable to store current query for highlighting
+    let currentQuery = '';
+    
+    // Allow Enter key to trigger search
+    document.getElementById('queryInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        performSearch();
+      }
+    });
+
     async function performSearch() {
       const query = document.getElementById("queryInput").value.trim();
       if (!query) {
-        alert("Please enter a search query.");
         return;
       }
 
-      document.getElementById("resultsStats").textContent = "Searching...";
+      currentQuery = query.toLowerCase();
+      document.getElementById("resultsInfo").textContent = "Searching...";
       document.getElementById("resultsList").innerHTML = "";
       document.getElementById("noResults").style.display = "none";
 
       try {
-        const response = await fetch("http://localhost:8000/search", {
+        const response = await fetch("/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query })
@@ -122,38 +242,98 @@
         const data = await response.json();
 
         if (data.results && data.results.length > 0) {
-          document.getElementById("resultsStats").textContent = `${data.results.length} results found`;
-          const list = document.getElementById("resultsList");
-          data.results.forEach(result => {
-            const { id, doc, score } = result;
-            const li = document.createElement("li");
-            li.className = "result-item";
-            li.innerHTML = `
-              <div class="result-score">${score.toFixed(4)}</div>
-              <div class="result-content">
-                <a class="result-title" href="#" onclick="selectResult('${id}')">${truncateText(doc, 60)}</a>
-                <div class="result-snippet">${truncateText(doc, 200)}</div>
-              </div>
-            `;
-            list.appendChild(li);
-          });
+          const resultsCount = data.results.length;
+          const searchTime = Math.random() * 0.5 + 0.1; // Simulate search time
+          document.getElementById("resultsInfo").textContent = 
+            `About ${resultsCount} results (${searchTime.toFixed(2)} seconds)`;
+          
+          displayResults(data.results);
         } else {
           document.getElementById("noResults").style.display = "block";
-          document.getElementById("resultsStats").textContent = "";
+          document.getElementById("resultsInfo").textContent = "";
         }
       } catch (error) {
         console.error("Search error:", error);
-        document.getElementById("resultsStats").textContent = "An error occurred.";
+        document.getElementById("resultsInfo").textContent = "An error occurred during search.";
       }
     }
 
-    function truncateText(text, maxLength) {
-      return text.length <= maxLength ? text : text.substring(0, maxLength) + "...";
+    function displayResults(results) {
+      const container = document.getElementById("resultsList");
+      
+      results.forEach((result, index) => {
+        const { doc, score } = result;
+        
+        // Create result element
+        const resultDiv = document.createElement("div");
+        resultDiv.className = "result-item";
+        
+        // Generate a fake URL for aesthetics
+        const fakeUrl = `mlx8.ai/document/${index + 1}`;
+        
+        // Highlight matching words in the document text
+        const highlightedTitle = highlightMatches(truncateText(doc, 80), currentQuery);
+        const highlightedSnippet = highlightMatches(truncateText(doc, 200), currentQuery);
+        
+        resultDiv.innerHTML = `
+          <div class="result-url">
+            <div class="result-favicon">📄</div>
+            <span>${fakeUrl}</span>
+          </div>
+          <a href="#" class="result-title" onclick="selectResult(${index})">${highlightedTitle}</a>
+          <div class="result-snippet">${highlightedSnippet}</div>
+          <div class="result-score">Relevance: ${(score * 100).toFixed(1)}%</div>
+        `;
+        
+        container.appendChild(resultDiv);
+      });
     }
 
-    function selectResult(id) {
-      alert("Selected document ID: " + id);
+    function highlightMatches(text, query) {
+      if (!query || !text) return text;
+      
+      // Split query into individual words and remove common stop words
+      const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']);
+      const queryWords = query.toLowerCase()
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !stopWords.has(word));
+      
+      if (queryWords.length === 0) return text;
+      
+      // Create regex pattern for highlighting
+      const pattern = queryWords.map(word => 
+        word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
+      ).join('|');
+      
+      const regex = new RegExp(`\\b(${pattern})\\b`, 'gi');
+      
+      // Replace matches with highlighted versions
+      return text.replace(regex, '<span class="highlight">$1</span>');
     }
+
+    function truncateText(text, maxLength) {
+      if (text.length <= maxLength) return text;
+      
+      // Try to cut at a word boundary
+      const truncated = text.substring(0, maxLength);
+      const lastSpace = truncated.lastIndexOf(' ');
+      
+      if (lastSpace > maxLength * 0.8) {
+        return truncated.substring(0, lastSpace) + "...";
+      }
+      
+      return truncated + "...";
+    }
+
+    function selectResult(index) {
+      console.log(`Selected result ${index + 1}`);
+      // You can add more functionality here, like opening a detailed view
+    }
+
+    // Focus on search box when page loads
+    window.addEventListener('load', function() {
+      document.getElementById('queryInput').focus();
+    });
   </script>
 </body>
 </html>

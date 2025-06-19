@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import sys
 import numpy as np
@@ -23,7 +24,7 @@ import chromadb
 # --- CONFIGURATION ---
 # IMPORTANT: Update this with the folder name from your latest training run.
 # Example: ARTIFACTS_PATH = PROJECT_DIR / "artifacts" / "run_20240101_120000"
-ARTIFACTS_PATH = PROJECT_DIR / "artifacts" / "run_20250619_204557" # 👈 CHANGE THIS
+ARTIFACTS_PATH = PROJECT_DIR / "artifacts" / "run-20250619_212044" # 👈 CHANGE THIS
 HYBRID_ALPHA = 0.5 # Weight for dense search (1.0 = pure dense, 0.0 = pure TF-IDF)
 
 CHROMA_STORE_PATH = str(APP_DIR / "chroma_store")
@@ -79,6 +80,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    """Serve the search interface HTML."""
+    html_path = APP_DIR / "index.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(), status_code=200)
+    else:
+        return HTMLResponse(content="<h1>Frontend not found</h1>", status_code=404)
 
 @app.post("/search")
 def search(input: QueryInput):

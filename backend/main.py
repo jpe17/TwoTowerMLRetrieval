@@ -20,6 +20,9 @@ import pickle
 import shutil
 from sklearn.feature_extraction.text import TfidfVectorizer
 import wandb
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 # Add backend to path for imports
 sys.path.append(str(Path(__file__).parent))
