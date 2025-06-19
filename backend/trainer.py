@@ -90,6 +90,62 @@ class TwoTowerTrainer:
         
         return metrics
     
+    def compute_retrieval_metrics_fixed(self, query_emb, doc_emb, pos_labels, k_values=[5, 10]):
+        """Compute recall metrics with explicit positive labels."""
+        batch_size = query_emb.size(0)
+        similarities = torch.mm(query_emb, doc_emb.t())
+        _, top_k_indices = torch.topk(similarities, k=max(k_values), dim=1)
+        
+        metrics = {}
+        for k in k_values:
+            recall_scores = []
+            for i in range(batch_size):
+                # Check if the positive document for query i is in top-k
+                pos_doc_idx = pos_labels[i].item()
+                recall_scores.append(1.0 if pos_doc_idx in top_k_indices[i, :k] else 0.0)
+            metrics[f'recall_at_{k}'] = np.mean(recall_scores)
+        
+        return metrics
+    
+    def compute_ranking_metrics_fixed(self, query_emb, doc_emb, pos_labels, k_values=[5, 10]):
+        """Compute ranking metrics with explicit positive labels."""
+        batch_size = query_emb.size(0)
+        similarities = torch.mm(query_emb, doc_emb.t())
+        
+        # Get rankings (higher similarity = better rank)
+        _, rankings = torch.sort(similarities, dim=1, descending=True)
+        
+        mrr_scores = []
+        ndcg_scores = {k: [] for k in k_values}
+        map_scores = {k: [] for k in k_values}
+        
+        for i in range(batch_size):
+            # Find position of positive doc in rankings
+            pos_doc_idx = pos_labels[i].item()
+            pos_rank = (rankings[i] == pos_doc_idx).nonzero(as_tuple=True)[0].item() + 1  # 1-indexed
+            
+            # MRR: Mean Reciprocal Rank
+            mrr_scores.append(1.0 / pos_rank)
+            
+            # NDCG and MAP at different k values
+            for k in k_values:
+                if pos_rank <= k:
+                    # NDCG@k: For binary relevance, NDCG = 1/log2(rank+1)
+                    ndcg_scores[k].append(1.0 / np.log2(pos_rank + 1))
+                    
+                    # MAP@k: For single relevant document, AP = 1/rank
+                    map_scores[k].append(1.0 / pos_rank)
+                else:
+                    ndcg_scores[k].append(0.0)
+                    map_scores[k].append(0.0)
+        
+        metrics = {'mrr': np.mean(mrr_scores)}
+        for k in k_values:
+            metrics[f'ndcg_at_{k}'] = np.mean(ndcg_scores[k])
+            metrics[f'map_at_{k}'] = np.mean(map_scores[k])
+        
+        return metrics
+    
     def compute_ranking_metrics(self, query_emb, doc_emb, k_values=[5, 10]):
         """Compute ranking metrics: MRR, NDCG, MAP."""
         batch_size = query_emb.size(0)
@@ -150,12 +206,17 @@ class TwoTowerTrainer:
                 pos_emb = self.model.encode_document(pos_docs)
                 neg_emb = self.model.encode_document(neg_docs)
                 
-                # Combine positive and negative docs for evaluation
-                doc_emb = torch.cat([pos_emb, neg_emb], dim=0)
+                # For proper evaluation, we need to shuffle the document pool
+                # and track where the positive documents are
+                batch_size = query_emb.size(0)
+                doc_emb = torch.cat([pos_emb, neg_emb], dim=0)  # Shape: [2*batch_size, hidden_dim]
                 
-                # Compute metrics
-                retrieval_metrics = self.compute_retrieval_metrics(query_emb, doc_emb)
-                ranking_metrics = self.compute_ranking_metrics(query_emb, doc_emb)
+                # Create labels: positive docs are at indices 0 to batch_size-1
+                pos_labels = torch.arange(batch_size, device=query_emb.device)
+                
+                # Compute metrics with corrected labels
+                retrieval_metrics = self.compute_retrieval_metrics_fixed(query_emb, doc_emb, pos_labels)
+                ranking_metrics = self.compute_ranking_metrics_fixed(query_emb, doc_emb, pos_labels)
                 
                 all_retrieval_metrics.append(retrieval_metrics)
                 all_ranking_metrics.append(ranking_metrics)
@@ -231,17 +292,27 @@ class TwoTowerTrainer:
             # Backward pass
             self.optimizer.zero_grad()
             loss.backward()
-            self.optimizer.step()
             
-            # Step the scheduler (OneCycleLR steps every batch)
-            if hasattr(self, 'scheduler'):
-                self.scheduler.step()
+            # Gradient clipping for stability
+            if self.config.get('GRAD_CLIP', 0) > 0:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['GRAD_CLIP'])
+            
+            self.optimizer.step()
             
             # Track progress
             epoch_loss += loss.item()
             for key in epoch_metrics:
                 epoch_metrics[key] += batch_metrics[key]
             batch_count += 1
+            
+            # Step the scheduler 
+            # OneCycleLR steps every batch, others step every 50 batches
+            scheduler_type = self.config.get('SCHEDULER_TYPE', 'onecycle')
+            if hasattr(self, 'scheduler') and self.scheduler is not None:
+                if scheduler_type == 'onecycle':
+                    self.scheduler.step()  # Step every batch
+                elif batch_count % 50 == 0:
+                    self.scheduler.step()  # Step every 50 batches
             
             # Dynamic progress bar - update every batch
             progress_bar = self.create_progress_bar(
@@ -356,20 +427,47 @@ class TwoTowerTrainer:
         if epochs is None:
             epochs = self.config.get('EPOCHS', 10)
         
-        # Initialize OneCycleLR scheduler
-        total_steps = len(train_loader) * epochs
-        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            self.optimizer,
-            max_lr=self.config.get('MAX_LR', 0.01),  # Peak learning rate
-            total_steps=total_steps,
-            pct_start=self.config.get('WARMUP_PCT', 0.1),  # 10% warmup
-            anneal_strategy='cos',  # Cosine annealing
-            div_factor=self.config.get('DIV_FACTOR', 10),  # Initial LR = max_lr/10
-            final_div_factor=self.config.get('FINAL_DIV_FACTOR', 100)  # Final LR = max_lr/100
-        )
+        # Choose your learning rate scheduler
+        scheduler_type = self.config.get('SCHEDULER_TYPE', 'onecycle')  # 'onecycle', 'step', 'cosine', 'exponential'
+        
+        if scheduler_type == 'onecycle':
+            # Original OneCycleLR (increases then decreases, steps every batch)
+            total_steps = len(train_loader) * epochs
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                self.optimizer,
+                max_lr=self.config.get('MAX_LR', 0.01),
+                total_steps=total_steps,
+                pct_start=self.config.get('WARMUP_PCT', 0.1),
+                anneal_strategy='cos',
+                div_factor=self.config.get('DIV_FACTOR', 10),
+                final_div_factor=self.config.get('FINAL_DIV_FACTOR', 100)
+            )
+            scheduler_info = f"OneCycleLR: {total_steps} total steps, max_lr={self.config.get('MAX_LR', 0.01)}"
+            
+        elif scheduler_type == 'step':
+            # StepLR: Decreases LR by factor every 50 batches
+            self.scheduler = torch.optim.lr_scheduler.StepLR(
+                self.optimizer,
+                step_size=1,  # Step every call (we'll call it every 50 batches)
+                gamma=self.config.get('GAMMA', 0.9)  # Multiply LR by 0.9
+            )
+            scheduler_info = f"StepLR: decay by {self.config.get('GAMMA', 0.9)} every 50 batches"
+            
+        elif scheduler_type == 'exponential':
+            # ExponentialLR: Exponential decay every 50 batches
+            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                self.optimizer,
+                gamma=self.config.get('GAMMA', 0.95)  # Multiply by 0.95 every 50 batches
+            )
+            scheduler_info = f"ExponentialLR: decay by {self.config.get('GAMMA', 0.95)} every 50 batches"
+            
+        else:
+            # No scheduler
+            self.scheduler = None
+            scheduler_info = "No scheduler - constant learning rate"
         
         print(f"🚀 Starting training for {epochs} epochs...")
-        print(f"📈 OneCycleLR: {total_steps} total steps, max_lr={self.config.get('MAX_LR', 0.01)}")
+        print(f"📈 Learning Rate: {scheduler_info}")
         start_time = time.time()
         
         for epoch in range(epochs):
@@ -404,4 +502,4 @@ class TwoTowerTrainer:
         return {
             'train_losses': self.train_losses,
             'best_val_loss': self.best_val_loss
-        } 
+        }
