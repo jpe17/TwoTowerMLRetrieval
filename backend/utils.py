@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 import shutil
 from torch.serialization import safe_globals
+import argparse
+import pickle
 
 
 def get_best_device() -> torch.device:
@@ -88,6 +90,84 @@ def load_config(config_path: str = 'backend/config.json') -> Dict[str, Any]:
     with open(config_path, 'r') as f:
         config = json.load(f)
     return config
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Two-Tower Model Training')
+    parser.add_argument(
+        '--checkpoint', '-c',
+        type=str,
+        help='Path to checkpoint directory to resume training from'
+    )
+    return parser.parse_args()
+
+
+def load_embeddings_and_maps(artifacts_path, device):
+    """Loads all necessary embeddings and mappings from an artifacts directory."""
+    print(f"📂 Loading pre-computed embeddings from {artifacts_path}...")
+    
+    try:
+        # Load documents
+        doc_embeddings = torch.from_numpy(np.load(f"{artifacts_path}/document_embeddings.npy")).to(device)
+        with open(f"{artifacts_path}/doc_to_idx.pkl", 'rb') as f:
+            doc_to_idx = pickle.load(f)
+        
+        # Load queries
+        query_embeddings = torch.from_numpy(np.load(f"{artifacts_path}/query_embeddings.npy")).to(device)
+        with open(f"{artifacts_path}/query_to_idx.pkl", 'rb') as f:
+            query_to_idx = pickle.load(f)
+            
+        # Create reverse mapping to get document text from its index
+        idx_to_doc = {idx: doc for doc, idx in doc_to_idx.items()}
+
+        print(f"  ✅ Loaded {len(doc_to_idx):,} document embeddings.")
+        print(f"  ✅ Loaded {len(query_to_idx):,} query embeddings.")
+        
+        return doc_embeddings, doc_to_idx, idx_to_doc, query_embeddings, query_to_idx
+        
+    except FileNotFoundError as e:
+        print(f"❌ Error: {e}.")
+        print(f"   Ensure the path '{artifacts_path}' is correct and contains the required .npy and .pkl files.")
+        print("   💡 Did you run training with the 'save_doc_embeddings=True' flag?")
+        return None, None, None, None, None
+
+
+def create_model_and_trainer(config, pretrained_embeddings, device, checkpoint_path=None):
+    """Create two-tower model and trainer."""
+    from model import ModelFactory
+    from trainer import TwoTowerTrainer
+    
+    print("\n🏗️  Creating two-tower model...")
+    
+    if checkpoint_path:
+        print(f"📥 Loading model from checkpoint: {checkpoint_path}")
+        # Load model artifacts (includes model state, optimizer state, config)
+        loaded_model, loaded_config, training_info = load_model_artifacts(checkpoint_path)
+        
+        # Use the loaded model directly
+        model = loaded_model
+        model = model.to(device)
+        
+        # Create trainer with loaded config
+        trainer = TwoTowerTrainer(model, loaded_config, device)
+        
+        # Load checkpoint to get optimizer state
+        checkpoint_path_file = os.path.join(checkpoint_path, 'model_checkpoint.pth')
+        checkpoint = torch.load(checkpoint_path_file, map_location=device)
+        if 'optimizer_state_dict' in checkpoint:
+            trainer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            
+        # Update config with loaded config
+        config.update(loaded_config)
+        
+        print("✅ Model restored successfully from checkpoint")
+    else:
+        model = ModelFactory.create_two_tower_model(config, pretrained_embeddings)
+        model = model.to(device)
+        trainer = TwoTowerTrainer(model, config, device)
+    
+    return model, trainer
 
 
 def save_config(config: Dict[str, Any], config_path: str = 'backend/config.json'):
@@ -269,10 +349,11 @@ def _save_embeddings_during_training(model, datasets, tokenizer, run_dir: str, c
     print(f"  Found {len(unique_docs):,} unique documents across all datasets")
     print(f"  Found {len(unique_queries):,} unique queries across all datasets")
     
-    # Get model params
-    model.eval()
+    # CRITICAL FIX: Save and restore model training state
+    was_training = model.training
+    model.eval()  # Ensure model is in eval mode
     device = next(model.parameters()).device
-    batch_size = config.get('BATCH_SIZE', 64)
+    batch_size = min(32, config.get('BATCH_SIZE', 64))  # Use smaller batch size for stability
 
     # --- Create and Save Document Embeddings ---
     if unique_docs:
@@ -286,14 +367,29 @@ def _save_embeddings_during_training(model, datasets, tokenizer, run_dir: str, c
                 batch_docs = unique_docs[i:i + batch_size]
                 batch_tokens = [torch.tensor(tokenizer.encode(doc), dtype=torch.long) for doc in batch_docs]
                 if batch_tokens:
+                    # CRITICAL FIX: Ensure tensor is properly constructed
                     batch_tensor = pad_sequence(batch_tokens, batch_first=True).to(device)
+                    
+                    # CRITICAL FIX: Double-check model has the right method
                     if hasattr(model, 'encode_document'):
                         embeddings = model.encode_document(batch_tensor)
                     elif hasattr(model, 'doc_encoder'):
                         embeddings = model.doc_encoder(batch_tensor)
                     else: # Fallback
-                        embeddings = model.encode_text(batch_tensor)
-                    doc_embeddings.append(embeddings.cpu().numpy())
+                        raise ValueError("Model does not have encode_document or doc_encoder method")
+                    
+                    # CRITICAL FIX: Ensure embeddings are properly detached
+                    embeddings_np = embeddings.detach().cpu().numpy()
+                    doc_embeddings.append(embeddings_np)
+                    
+                    # CRITICAL FIX: Add debug info for first batch
+                    if i == 0 and len(embeddings_np) > 1:
+                        sim_check = np.dot(embeddings_np[0], embeddings_np[1]) / (
+                            np.linalg.norm(embeddings_np[0]) * np.linalg.norm(embeddings_np[1])
+                        )
+                        print(f"    🔍 First batch similarity check: {sim_check:.6f} (should be < 0.99)")
+                        if sim_check > 0.99:
+                            print(f"    ⚠️  WARNING: Identical embeddings detected in first batch!")
         
         if doc_embeddings:
             all_doc_embeddings = np.vstack(doc_embeddings)
@@ -335,6 +431,32 @@ def _save_embeddings_during_training(model, datasets, tokenizer, run_dir: str, c
                 for q in unique_queries:
                     f.write(q + '\n')
             print(f"    ✅ Saved {len(unique_queries):,} query embeddings ({all_query_embeddings.shape})")
+    
+    # CRITICAL FIX: Restore model training state
+    if was_training:
+        model.train()
+    
+    # CRITICAL FIX: Validate saved embeddings to catch corruption early
+    if os.path.exists(os.path.join(run_dir, 'document_embeddings.npy')):
+        saved_doc_emb = np.load(os.path.join(run_dir, 'document_embeddings.npy'))
+        if len(saved_doc_emb) > 1:
+            # Check if first two embeddings are identical (sign of corruption)
+            sim = np.dot(saved_doc_emb[0], saved_doc_emb[1]) / (
+                np.linalg.norm(saved_doc_emb[0]) * np.linalg.norm(saved_doc_emb[1])
+            )
+            if sim > 0.999:
+                print(f"    ⚠️  WARNING: Document embeddings may be corrupted (similarity: {sim:.6f})")
+                print(f"    💡 Consider regenerating embeddings if retrieval performance is poor")
+            else:
+                print(f"    ✅ Document embeddings look diverse (similarity: {sim:.6f})")
+        
+        # Check variance
+        total_variance = np.var(saved_doc_emb)
+        if total_variance < 1e-6:
+            print(f"    ❌ CRITICAL: Document embeddings have no variance ({total_variance:.10f})")
+            print(f"    💡 This will cause zero retrieval performance - embeddings need regeneration")
+        else:
+            print(f"    ✅ Document embeddings have good variance ({total_variance:.6f})")
 
 
 def load_model_artifacts(artifacts_dir: str, device: Optional[torch.device] = None):
@@ -378,6 +500,10 @@ def load_model_artifacts(artifacts_dir: str, device: Optional[torch.device] = No
         # Load checkpoint for additional info
         checkpoint_path = os.path.join(artifacts_dir, 'model_checkpoint.pth')
         checkpoint = torch.load(checkpoint_path, map_location=device)
+    
+    # Ensure backward compatibility for loaded models
+    if hasattr(model, '_ensure_backward_compatibility'):
+        model._ensure_backward_compatibility()
     
     print(f"✅ Loaded model from {artifacts_dir}")
     print(f"   Final loss: {checkpoint['final_loss']:.4f}")

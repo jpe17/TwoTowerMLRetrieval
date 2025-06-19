@@ -11,7 +11,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import wandb
-import argparse
+import numpy as np
+import torch.nn.functional as F
 
 load_dotenv()  # Loads .env file
 
@@ -26,113 +27,13 @@ from tokenizer import PretrainedTokenizer
 from dataset import DataLoaderFactory
 from model import ModelFactory, TwoTowerModel
 from trainer import TwoTowerTrainer
-from evaluator import SimpleEvaluator, AdvancedEvaluator
+from eval_test import run_evaluation
 from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
     load_pretrained_embeddings, print_model_summary, load_model_artifacts,
-    save_model_artifacts
+    save_model_artifacts, parse_args, load_embeddings_and_maps, create_model_and_trainer
 )
 
-
-def create_model_and_trainer(config, pretrained_embeddings, device, checkpoint_path=None):
-    """Create two-tower model and trainer."""
-    print("\n🏗️  Creating two-tower model...")
-    
-    if checkpoint_path:
-        print(f"📥 Loading model from checkpoint: {checkpoint_path}")
-        # Load model artifacts (includes model state, optimizer state, config)
-        loaded_artifacts = load_model_artifacts(checkpoint_path)
-        
-        # Create model with loaded config
-        model = ModelFactory.create_two_tower_model(loaded_artifacts['config'], pretrained_embeddings)
-        model = model.to(device)
-        
-        # Load model state
-        model.load_state_dict(loaded_artifacts['model_state'])
-        
-        # Create trainer and restore optimizer state
-        trainer = TwoTowerTrainer(model, loaded_artifacts['config'], device)
-        if 'optimizer_state' in loaded_artifacts:
-            trainer.optimizer.load_state_dict(loaded_artifacts['optimizer_state'])
-            
-        # Update config with loaded config
-        config.update(loaded_artifacts['config'])
-        
-        print("✅ Model restored successfully from checkpoint")
-    else:
-        model = ModelFactory.create_two_tower_model(config, pretrained_embeddings)
-        model = model.to(device)
-        trainer = TwoTowerTrainer(model, config, device)
-    
-    return model, trainer
-
-
-def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description='Two-Tower Model Training')
-    parser.add_argument(
-        '--checkpoint', '-c',
-        type=str,
-        help='Path to checkpoint directory to resume training from'
-    )
-    return parser.parse_args()
-
-
-def demo_evaluator(model, trainer, tokenizer, device, datasets, config):
-    """Demo the evaluator with test data."""
-    if 'test' not in datasets or not datasets['test']:
-        return
-    
-    print(f"\n🔍 Testing Evaluator...")
-    print("=" * 60)
-    
-    # Create retrieval evaluator
-    evaluator = SimpleEvaluator(trainer.model, tokenizer, device, config)
-    
-    # Get sample data from test set - create proper query-specific document sets
-    test_sample = datasets['test'][:20]  # Use fewer samples for cleaner demo
-    
-    # Process each demo query individually to ensure correct positive docs are included
-    demo_queries_data = []
-    seen_queries = set()
-    
-    for query, pos_doc, neg_doc in test_sample:
-        if query not in seen_queries and len(demo_queries_data) < 3:
-            seen_queries.add(query)
-            
-            # Create a focused document set for this query
-            query_docs = [pos_doc]  # Start with the correct positive document
-            
-            # Add some other documents from the test set as distractors
-            for other_query, other_pos, other_neg in test_sample[:15]:
-                if other_query != query:  # Don't add docs from same query
-                    query_docs.extend([other_pos, other_neg])
-            
-            # Remove duplicates while preserving order
-            unique_query_docs = []
-            seen = set()
-            for doc in query_docs:
-                if doc not in seen:
-                    unique_query_docs.append(doc)
-                    seen.add(doc)
-            
-            demo_queries_data.append({
-                'query': query,
-                'documents': unique_query_docs[:20],  # Limit to 20 docs for manageable demo
-                'positive_docs': [pos_doc]
-            })
-    
-    # Test the demo queries
-    for i, query_data in enumerate(demo_queries_data, 1):
-        print(f"\n📝 Demo Query {i}:")
-        results = evaluator.evaluate_query(
-            query=query_data['query'],
-            documents=query_data['documents'],
-            positive_docs=query_data['positive_docs']
-        )
-        evaluator.print_query_results(query_data['query'], results)
-    
-    print("\n" + "=" * 60)
 
 
 def main():
@@ -243,8 +144,10 @@ def main():
     
     print(f"✅ Model saved to: {artifacts_dir}")
 
-    # Demo the evaluator
-    demo_evaluator(model, trainer, tokenizer, device, datasets, config)
+    # Run the full evaluation on the test set
+    print(f"\n\n📊 RUNNING FULL EVALUATION")
+    print("=" * 80)
+    run_evaluation(artifacts_dir, config, device)
 
     print(f"\n🎉 Training completed successfully!")
     print(f"📁 Trained model saved in: {artifacts_dir}")
