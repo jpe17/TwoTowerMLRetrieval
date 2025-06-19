@@ -16,26 +16,25 @@
     "FREEZE_EMBEDDINGS": false,
     "FINE_TUNE_EMBEDDINGS": true,
     
-    "BATCH_SIZE": 64,
-    "EPOCHS": 10,
+    "BATCH_SIZE": 32,
+    "EPOCHS": 15,
     "DEVICE": "mps",
     
-    "LOSS_TYPE": "adaptive_triplet",
-    "MARGIN": 0.5,
-    "NORMALIZE_OUTPUT": true,
+    "LOSS_TYPE": "triplet",
+    "MARGIN": 1.0,
+    "NORMALIZE_OUTPUT": false,
     "NORMALIZE_PRETRAINED_EMBEDDINGS": true,
     
     "POOLING_STRATEGY": "mean",
-    "DROPOUT": 0.1,
-    "EMBEDDING_DROPOUT": 0.05,
+    "DROPOUT": 0.3,
+    "EMBEDDING_DROPOUT": 0.2,
     
-    "LR": 0.0002,
-    "WEIGHT_DECAY": 1e-4,
-    "GRAD_CLIP": 1.0,
+    "LR": 0.00005,
+    "WEIGHT_DECAY": 1e-3,
+    "GRAD_CLIP": 0.5,
     
-    "SCHEDULER_TYPE": "onecycle",
-    "MAX_LR": 0.001,
-    "WARMUP_PCT": 0.1,
+    "SCHEDULER_TYPE": "step",
+    "GAMMA": 0.95,
     
     "TASK_MODE": "retrieval"
 } 
