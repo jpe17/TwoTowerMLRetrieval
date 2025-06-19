@@ -4,115 +4,283 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Google - Document Search</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Product+Sans:wght@400;500&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --background-color: #fff;
+      --text-color: #202124;
+      --link-color: #1a0dab;
+      --snippet-color: #4d5156;
+      --info-color: #70757a;
+      --border-color: #dfe1e5;
+      --button-bg: #f8f9fa;
+      --button-border: #f8f9fa;
+      --button-text: #3c4043;
+      --highlight-bg: #fff2cc;
+      --search-box-shadow: 0 2px 10px 0 rgba(0,0,0,0.15);
+      --search-box-hover-shadow: 0 2px 10px 0 rgba(0,0,0,0.2);
+      --favicon-bg: #f1f3f4;
+      --footer-bg: #f2f2f2;
+    }
+
+    body.dark-mode {
+      --background-color: #202124;
+      --text-color: #e8eaed;
+      --link-color: #8ab4f8;
+      --snippet-color: #bdc1c6;
+      --info-color: #969ba1;
+      --border-color: #5f6368;
+      --button-bg: #303134;
+      --button-border: #303134;
+      --button-text: #e8eaed;
+      --highlight-bg: #3e2b00;
+      --search-box-shadow: 0 2px 10px 0 rgba(0,0,0,0.4);
+      --search-box-hover-shadow: 0 2px 10px 0 rgba(0,0,0,0.6);
+      --favicon-bg: #303134;
+      --footer-bg: #171717;
+    }
+
     body {
-      font-family: arial, sans-serif;
+      font-family: 'Roboto', arial, sans-serif;
       margin: 0;
       padding: 0;
-      background: #fff;
-      color: #202124;
+      background: var(--background-color);
+      color: var(--text-color);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      transition: background-color 0.3s, color 0.3s;
     }
+    
+    /* Search mode styles */
+    body.search-mode .main-container {
+      display: none;
+    }
+    
+    body.search-mode .search-header {
+      display: flex;
+      align-items: center;
+      padding: 12px 30px 12px 100px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--background-color);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      gap: 20px;
+    }
+    
+    body.search-mode .logo-container {
+      margin-right: 30px; 
+      margin: 0;
+      text-align: left;
+      flex-shrink: 0;
+    }
+    
+    body.search-mode .google-logo {
+      font-size: 28px;
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+    
+    body.search-mode .by-mlx8 {
+      display: none;
+    }
+    
+    body.search-mode .search-container {
+      flex: 1;
+      max-width: 600px;
+      margin: 0;
+    }
+    
+    body.search-mode .search-box {
+      height: 48px;
+      padding: 0 50px 0 16px;
+      border-radius: 24px;
+    }
+    
+    body.search-mode .search-icons {
+      height: 36px;
+      right: 8px;
+    }
+    
+    body.search-mode .search-content {
+      display: block;
+    }
+    
+    .search-header {
+      display: none;
+    }
+    
+    .search-content {
+      display: none;
+      padding: 20px 30px 20px 80px;
+      max-width: none;
+      margin: 0 auto;
+    }
+    
     .main-container {
-      max-width: 652px;
-      margin: 40px auto;
-      padding: 0 20px;
+      flex: 1;
+      max-width: 584px;
+      margin: 0 auto;
+      padding: 20px;
+      padding-top: 12vh;
+      transition: all 0.3s ease;
     }
     .logo-container {
       text-align: center;
-      margin-bottom: 25px;
+      margin-bottom: 35px;
+      transition: all 0.3s ease;
     }
     .google-logo {
-      font-size: 90px;
-      font-weight: normal;
+      font-family: 'Product Sans', arial, sans-serif;
+      font-size: 120px;
+      font-weight: 400;
       margin: 0;
       line-height: 1;
+      letter-spacing: -8px;
+      transition: all 0.3s ease;
     }
-    .google-g1 { color: #4285f4; } /* Blue */
-    .google-o1 { color: #ea4335; } /* Red */
-    .google-o2 { color: #fbbc05; } /* Yellow */
-    .google-g2 { color: #4285f4; } /* Blue */
-    .google-l { color: #34a853; }  /* Green */
-    .google-e { color: #ea4335; }  /* Red */
+    .google-g1 { color: #4285f4; }
+    .google-o1 { color: #ea4335; }
+    .google-o2 { color: #fbbc05; }
+    .google-g2 { color: #4285f4; }
+    .google-l { color: #34a853; }
+    .google-e { color: #ea4335; }
     
     .by-mlx8 {
-      font-size: 13px;
-      color: #70757a;
-      margin-top: -5px;
-      font-weight: normal;
+      font-size: 16px;
+      color: var(--info-color);
+      margin-top: 5px;
+      font-weight: 400;
+      letter-spacing: 0.5px;
     }
     
     .search-container {
       position: relative;
-      max-width: 584px;
       margin: 0 auto 30px;
+      transition: all 0.3s ease;
     }
     .search-box {
       width: 100%;
-      padding: 12px 45px 12px 16px;
-      font-size: 16px;
-      border: 1px solid #dfe1e5;
-      border-radius: 24px;
+      height: 60px;
+      padding: 0 70px 0 28px;
+      font-size: 18px;
+      border: 1px solid var(--border-color);
+      border-radius: 30px;
       outline: none;
-      box-shadow: none;
-      transition: box-shadow 0.2s;
+      background-color: var(--background-color);
+      color: var(--text-color);
+      box-shadow: var(--search-box-shadow);
+      transition: box-shadow 0.3s ease;
+      box-sizing: border-box;
     }
     .search-box:hover {
-      box-shadow: 0 2px 5px 1px rgba(64,60,67,0.16);
+      box-shadow: var(--search-box-hover-shadow);
     }
     .search-box:focus {
-      box-shadow: 0 2px 5px 1px rgba(64,60,67,0.16);
-      border-color: transparent;
+      box-shadow: var(--search-box-hover-shadow);
     }
-    .search-icon {
+    .search-icons {
       position: absolute;
       right: 16px;
       top: 50%;
       transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      height: 44px;
+      padding: 0 8px;
+    }
+    .icon-divider {
+      width: 1px;
+      height: 24px;
+      background-color: var(--border-color);
+      margin: 0 8px;
+    }
+    .search-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .search-icon {
       width: 20px;
       height: 20px;
       cursor: pointer;
+      fill: #9aa0a6;
+      padding: 6px;
+      border-radius: 50%;
+      transition: background-color 0.2s;
+    }
+    .search-icon:hover {
+      background-color: rgba(0,0,0,0.05);
+    }
+    body.dark-mode .search-icon:hover {
+      background-color: rgba(255,255,255,0.1);
+    }
+    .search-button {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      fill: #4285f4;
     }
     
     .buttons-container {
       text-align: center;
       margin-bottom: 30px;
+      transition: all 0.3s ease;
     }
     .search-btn {
-      background: #f8f9fa;
-      border: 1px solid #f8f9fa;
+      background: var(--button-bg);
+      border: 1px solid var(--button-border);
       border-radius: 4px;
-      color: #3c4043;
-      font-family: arial, sans-serif;
+      color: var(--button-text);
+      font-family: 'Roboto', arial, sans-serif;
       font-size: 14px;
       margin: 11px 4px;
-      padding: 0 16px;
-      line-height: 27px;
+      padding: 0 20px;
+      line-height: 36px;
       height: 36px;
       min-width: 54px;
       text-align: center;
       cursor: pointer;
       user-select: none;
+      transition: box-shadow 0.2s, border-color 0.2s;
     }
     .search-btn:hover {
       box-shadow: 0 1px 1px rgba(0,0,0,0.1);
-      background-color: #f8f9fa;
       border: 1px solid #dadce0;
-      color: #202124;
+    }
+    body.dark-mode .search-btn:hover {
+      border: 1px solid #70757a;
     }
     
     .results-info {
-      color: #70757a;
+      color: var(--info-color);
       font-size: 14px;
       margin-bottom: 20px;
-      padding-left: 12px;
+      padding-left: 0;
     }
     
     .result-item {
       margin-bottom: 25px;
-      max-width: 600px;
+      max-width: 1000px;
+      opacity: 0;
+      transform: translateY(15px);
+      animation: fadeIn 0.5s ease forwards;
     }
+    @keyframes fadeIn {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     .result-url {
-      color: #202124;
+      color: var(--text-color);
       font-size: 14px;
       line-height: 1.3;
       margin-bottom: 2px;
@@ -120,19 +288,19 @@
       align-items: center;
     }
     .result-favicon {
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       margin-right: 12px;
       border-radius: 50%;
-      background: #f1f3f4;
+      background: var(--favicon-bg);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 12px;
-      color: #5f6368;
+      color: var(--info-color);
     }
     .result-title {
-      color: #1a0dab;
+      color: var(--link-color);
       font-size: 20px;
       line-height: 1.3;
       font-weight: normal;
@@ -145,37 +313,111 @@
       text-decoration: underline;
     }
     .result-snippet {
-      color: #4d5156;
+      color: var(--snippet-color);
       font-size: 14px;
       line-height: 1.58;
-      max-width: 550px;
     }
     .result-score {
       color: #34a853;
       font-size: 12px;
       margin-top: 4px;
+      font-weight: 500;
     }
     
     .highlight {
-      background-color: #fff2cc;
+      background-color: var(--highlight-bg);
       font-weight: bold;
       padding: 0 1px;
+      color: var(--text-color);
     }
     
     .no-results {
       text-align: center;
-      color: #70757a;
+      color: var(--info-color);
       margin-top: 40px;
       display: none;
     }
     
-    /* Enter key support */
-    .search-box:focus {
-      outline: none;
+    /* Dark mode toggle */
+    .theme-switch-wrapper {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      display: flex;
+      align-items: center;
+    }
+    .theme-switch {
+      display: inline-block;
+      height: 24px;
+      position: relative;
+      width: 50px;
+    }
+    .theme-switch input { display: none; }
+    .slider {
+      background-color: #ccc;
+      bottom: 0;
+      cursor: pointer;
+      left: 0;
+      position: absolute;
+      right: 0;
+      top: 0;
+      transition: .4s;
+    }
+    .slider:before {
+      background-color: #fff;
+      bottom: 4px;
+      content: "";
+      height: 16px;
+      left: 4px;
+      position: absolute;
+      transition: .4s;
+      width: 16px;
+    }
+    input:checked + .slider {
+      background-color: #8ab4f8;
+    }
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+    .slider.round { border-radius: 34px; }
+    .slider.round:before { border-radius: 50%; }
+
+    footer {
+      background: var(--footer-bg);
+      padding: 15px 30px;
+      border-top: 1px solid var(--border-color);
+      color: var(--info-color);
+      font-size: 14px;
+      margin-top: 40px;
+    }
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .footer-links {
+      display: flex;
+      gap: 25px;
+    }
+    .footer-links a {
+      color: var(--info-color);
+      text-decoration: none;
+    }
+    .footer-links a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
+  <div class="theme-switch-wrapper">
+    <label class="theme-switch" for="checkbox">
+        <input type="checkbox" id="checkbox" />
+        <div class="slider round"></div>
+    </label>
+  </div>
+
   <div class="main-container">
     <div class="logo-container">
       <div class="google-logo">
@@ -186,15 +428,75 @@
     
     <div class="search-container">
       <input type="text" id="queryInput" class="search-box" placeholder="Search documents..." autocomplete="off">
-      <svg class="search-icon" onclick="performSearch()" viewBox="0 0 24 24" fill="#9aa0a6">
-        <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-      </svg>
+      <div class="search-icons">
+        <div class="search-tools">
+          <svg class="search-icon" focusable="false" viewBox="0 0 24 24">
+            <path d="m12 15c1.66 0 3-1.34 3-3v-6c0-1.66-1.34-3-3-3s-3 1.34-3 3v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1s-5.3-2.1-5.3-5.1h-1.7c0 3.41 2.72 6.23 6 6.72v3.28h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"></path>
+          </svg>
+          <svg class="search-icon" focusable="false" viewBox="0 0 192 192">
+            <rect fill="none" height="192" width="192"></rect>
+            <g>
+              <circle fill="#34a853" cx="144.07" cy="144" r="16"></circle>
+              <circle fill="#4285f4" cx="96.07" cy="104" r="24"></circle>
+              <path fill="#ea4335" d="M24,135.2c0,18.11,14.69,32.8,32.8,32.8H96v-16l-40.1-0.1c-8.8,0-15.9-8.19-15.9-17.9v-18H24V135.2z"></path>
+              <path fill="#fbbc04" d="M168,72.8c0-18.11-14.69-32.8-32.8-32.8H116l20,16c8.8,0,16,8.29,16,18v30h16V72.8z"></path>
+              <path fill="#4285f4" d="M112,24l-32,0L68,40H56.8C38.69,40,24,54.69,24,72.8V92h16V74c0-9.71,7.2-18,16-18h80L112,24z"></path>
+            </g>
+          </svg>
+        </div>
+        <div class="icon-divider"></div>
+        <div class="search-button" onclick="performSearch()">
+          <svg width="20" height="20" viewBox="0 0 24 24">
+            <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+        </div>
+      </div>
     </div>
     
     <div class="buttons-container">
       <button class="search-btn" onclick="performSearch()">Google Search</button>
+      <button class="search-btn">I'm Feeling Lucky</button>
     </div>
+  </div>
 
+  <!-- Search mode header -->
+  <div class="search-header">
+    <div class="logo-container">
+      <div class="google-logo">
+        <span class="google-g1">G</span><span class="google-o1">o</span><span class="google-o2">o</span><span class="google-g2">g</span><span class="google-l">l</span><span class="google-e">e</span>
+      </div>
+    </div>
+    
+    <div class="search-container">
+      <input type="text" id="queryInputTop" class="search-box" placeholder="Search documents..." autocomplete="off">
+      <div class="search-icons">
+        <div class="search-tools">
+          <svg class="search-icon" focusable="false" viewBox="0 0 24 24">
+            <path d="m12 15c1.66 0 3-1.34 3-3v-6c0-1.66-1.34-3-3-3s-3 1.34-3 3v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1s-5.3-2.1-5.3-5.1h-1.7c0 3.41 2.72 6.23 6 6.72v3.28h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"></path>
+          </svg>
+          <svg class="search-icon" focusable="false" viewBox="0 0 192 192">
+            <rect fill="none" height="192" width="192"></rect>
+            <g>
+              <circle fill="#34a853" cx="144.07" cy="144" r="16"></circle>
+              <circle fill="#4285f4" cx="96.07" cy="104" r="24"></circle>
+              <path fill="#ea4335" d="M24,135.2c0,18.11,14.69,32.8,32.8,32.8H96v-16l-40.1-0.1c-8.8,0-15.9-8.19-15.9-17.9v-18H24V135.2z"></path>
+              <path fill="#fbbc04" d="M168,72.8c0-18.11-14.69-32.8-32.8-32.8H116l20,16c8.8,0,16,8.29,16,18v30h16V72.8z"></path>
+              <path fill="#4285f4" d="M112,24l-32,0L68,40H56.8C38.69,40,24,54.69,24,72.8V92h16V74c0-9.71,7.2-18,16-18h80L112,24z"></path>
+            </g>
+          </svg>
+        </div>
+        <div class="icon-divider"></div>
+        <div class="search-button" onclick="performSearchFromTop()">
+          <svg width="20" height="20" viewBox="0 0 24 24">
+            <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search results content -->
+  <div class="search-content">
     <div class="results-info" id="resultsInfo"></div>
     <div id="resultsList"></div>
     <div class="no-results" id="noResults">
@@ -208,6 +510,23 @@
     </div>
   </div>
 
+  <footer>
+    <div class="footer-content">
+      <span>United Kingdom</span>
+      <div class="footer-links" style="margin-left:auto; margin-right:auto;">
+        <a href="#">About</a>
+        <a href="#">Advertising</a>
+        <a href="#">Business</a>
+        <a href="#">How Search works</a>
+      </div>
+      <div class="footer-links">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Settings</a>
+      </div>
+    </div>
+  </footer>
+
   <script>
     // Global variable to store current query for highlighting
     let currentQuery = '';
@@ -219,12 +538,38 @@
       }
     });
 
+    // Add event listener for top search bar
+    document.getElementById('queryInputTop').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        performSearchFromTop();
+      }
+    });
+
     async function performSearch() {
       const query = document.getElementById("queryInput").value.trim();
       if (!query) {
         return;
       }
 
+      // Switch to search mode
+      document.body.classList.add('search-mode');
+      
+      // Copy query to top search bar
+      document.getElementById('queryInputTop').value = query;
+
+      await executeSearch(query);
+    }
+
+    async function performSearchFromTop() {
+      const query = document.getElementById("queryInputTop").value.trim();
+      if (!query) {
+        return;
+      }
+
+      await executeSearch(query);
+    }
+
+    async function executeSearch(query) {
       currentQuery = query.toLowerCase();
       document.getElementById("resultsInfo").textContent = "Searching...";
       document.getElementById("resultsList").innerHTML = "";
@@ -261,20 +606,18 @@
       results.forEach((result, index) => {
         const { doc, score } = result;
         
-        // Create result element
         const resultDiv = document.createElement("div");
         resultDiv.className = "result-item";
+        resultDiv.style.animationDelay = `${index * 0.07}s`;
         
-        // Generate a fake URL for aesthetics
         const fakeUrl = `mlx8.ai/document/${index + 1}`;
         
-        // Highlight matching words in the document text
         const highlightedTitle = highlightMatches(truncateText(doc, 80), currentQuery);
-        const highlightedSnippet = highlightMatches(truncateText(doc, 200), currentQuery);
+        const highlightedSnippet = highlightMatches(truncateText(doc, 300), currentQuery);
         
         resultDiv.innerHTML = `
           <div class="result-url">
-            <div class="result-favicon">📄</div>
+            <div class="result-favicon">🌐</div>
             <span>${fakeUrl}</span>
           </div>
           <a href="#result-${index}" class="result-title" onclick="selectResult(${index})">${highlightedTitle}</a>
@@ -289,7 +632,6 @@
     function highlightMatches(text, query) {
       if (!query || !text) return text;
       
-      // Split query into individual words and remove common stop words
       const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']);
       const queryWords = query.toLowerCase()
         .split(/\s+/)
@@ -297,35 +639,51 @@
       
       if (queryWords.length === 0) return text;
       
-      // Create regex pattern for highlighting - removed word boundaries for more flexible matching
       const pattern = queryWords.map(word => 
-        word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
+        word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       ).join('|');
       
       const regex = new RegExp(`(${pattern})`, 'gi');
       
-      // Replace matches with highlighted versions
       return text.replace(regex, '<span class="highlight">$1</span>');
     }
 
     function truncateText(text, maxLength) {
       if (text.length <= maxLength) return text;
-      
-      // Try to cut at a word boundary
       const truncated = text.substring(0, maxLength);
       const lastSpace = truncated.lastIndexOf(' ');
-      
       if (lastSpace > maxLength * 0.8) {
         return truncated.substring(0, lastSpace) + "...";
       }
-      
       return truncated + "...";
     }
 
     function selectResult(index) {
       console.log(`Selected result ${index + 1}`);
-      // You can add more functionality here, like opening a detailed view
     }
+
+    // --- Dark Mode ---
+    const toggleSwitch = document.querySelector('.theme-switch input[type="checkbox"]');
+    const currentTheme = localStorage.getItem('theme');
+
+    if (currentTheme) {
+        document.body.classList.add(currentTheme);
+        if (currentTheme === 'dark-mode') {
+            toggleSwitch.checked = true;
+        }
+    }
+
+    function switchTheme(e) {
+        if (e.target.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('theme', 'dark-mode');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('theme', 'light-mode');
+        }
+    }
+
+    toggleSwitch.addEventListener('change', switchTheme, false);
 
     // Focus on search box when page loads
     window.addEventListener('load', function() {
