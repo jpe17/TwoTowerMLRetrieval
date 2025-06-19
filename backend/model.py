@@ -77,7 +77,6 @@ class TwoTowerModel(nn.Module):
         embed_dim: int,
         hidden_dim: int,
         pretrained_embeddings: Optional[np.ndarray] = None,
-        shared_encoder: bool = False,
         **encoder_kwargs
     ):
         super().__init__()
@@ -96,7 +95,6 @@ class TwoTowerModel(nn.Module):
             pretrained_embeddings, **encoder_kwargs
             )
         
-        self.shared_encoder = shared_encoder
     
     def encode_query(self, query: torch.Tensor) -> torch.Tensor:
         return self.query_encoder(query)
@@ -126,7 +124,6 @@ class ModelFactory:
             embed_dim=config.get('EMBED_DIM'),
             hidden_dim=config.get('HIDDEN_DIM'),
             pretrained_embeddings=pretrained_embeddings,
-            shared_encoder=config.get('SHARED_ENCODER', False),
             rnn_type=config.get('RNN_TYPE', 'GRU'),
             num_layers=config.get('NUM_LAYERS', 1),
             dropout=config.get('DROPOUT', 0.0)
