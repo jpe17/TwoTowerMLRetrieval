@@ -9,13 +9,6 @@ class TripletDataset(Dataset):
     """Dataset class for triplet data (query, positive_doc, negative_doc)."""
     
     def __init__(self, data: List[Tuple[str, str, str]], tokenizer: PretrainedTokenizer):
-        """
-        Initialize the dataset.
-        
-        Args:
-            data: List of triplets (query, positive_doc, negative_doc)
-            tokenizer: Tokenizer instance for encoding text
-        """
         self.data = data
         self.tokenizer = tokenizer
 

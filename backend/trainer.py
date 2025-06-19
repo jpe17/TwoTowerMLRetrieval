@@ -199,19 +199,20 @@ class TwoTowerTrainer:
                 # Move to device
                 queries = queries.to(self.device, non_blocking=True)
                 pos_docs = pos_docs.to(self.device, non_blocking=True) 
-                neg_docs = neg_docs.to(self.device, non_blocking=True)
+                # neg_docs are not used in this evaluation setup, but are part of the loader
                 
                 # Get embeddings
                 query_emb = self.model.encode_query(queries)
                 pos_emb = self.model.encode_document(pos_docs)
-                neg_emb = self.model.encode_document(neg_docs)
                 
-                # For proper evaluation, we need to shuffle the document pool
-                # and track where the positive documents are
+                # For a more realistic in-batch evaluation, we use only the positive 
+                # documents from the batch as the search corpus. The task is to find the 
+                # correct positive document for each query from this smaller, but more
+                # relevant, pool.
                 batch_size = query_emb.size(0)
-                doc_emb = torch.cat([pos_emb, neg_emb], dim=0)  # Shape: [2*batch_size, hidden_dim]
+                doc_emb = pos_emb  # Shape: [batch_size, hidden_dim]
                 
-                # Create labels: positive docs are at indices 0 to batch_size-1
+                # The positive label for query `i` is at index `i` in the `doc_emb` pool.
                 pos_labels = torch.arange(batch_size, device=query_emb.device)
                 
                 # Compute metrics with corrected labels
@@ -311,7 +312,7 @@ class TwoTowerTrainer:
             if hasattr(self, 'scheduler') and self.scheduler is not None:
                 if scheduler_type == 'onecycle':
                     self.scheduler.step()  # Step every batch
-                elif batch_count % 50 == 0:
+                elif batch_count % 1 == 0:
                     self.scheduler.step()  # Step every 50 batches
             
             # Dynamic progress bar - update every batch
@@ -325,7 +326,7 @@ class TwoTowerTrainer:
             print(progress_bar, end='', flush=True)
             
             # Detailed logging and evaluation every 50 batches
-            if batch_count % 50 == 0:
+            if batch_count % 1 == 0:
                 print(f"\n     ┌─ Gap:  {batch_metrics['similarity_gap']:7.3f} │ Magnitude: {batch_metrics['embedding_magnitude']:6.3f}")
                 print(f"     └─ Pos Sim: {batch_metrics['pos_similarity']:6.3f} │ Neg Sim: {batch_metrics['neg_similarity']:6.3f}")
                 

@@ -31,8 +31,6 @@ parameters:
     values: ["triplet"]
   SUBSAMPLE_RATIO:
     values: [0.1]
-  SHARED_ENCODER:
-    values: [false, true]
 early_terminate:
   type: hyperband
   min_iter: 1
