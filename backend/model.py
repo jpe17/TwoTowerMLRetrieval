@@ -19,7 +19,9 @@ class RNNEncoder(nn.Module):
         dropout: float = 0.0,
         embedding_dropout: float = 0.0,
         freeze_embeddings: bool = False,
-        fine_tune_embeddings: bool = True
+        fine_tune_embeddings: bool = True,
+        normalize_pretrained_embeddings: bool = True,
+        normalize_output: bool = True
     ):
         super().__init__()
         
@@ -29,8 +31,9 @@ class RNNEncoder(nn.Module):
         # Load pretrained embeddings
         if pretrained_embeddings is not None:
             self.embedding.weight.data.copy_(torch.from_numpy(pretrained_embeddings))
-            # For GloVe embeddings, normalize them for better training stability
-            self.embedding.weight.data = F.normalize(self.embedding.weight.data, p=2, dim=1)
+            # Optionally normalize embeddings for training stability
+            if normalize_pretrained_embeddings:
+                self.embedding.weight.data = F.normalize(self.embedding.weight.data, p=2, dim=1)
         
         # Control embedding training
         if freeze_embeddings or not fine_tune_embeddings:
@@ -38,6 +41,9 @@ class RNNEncoder(nn.Module):
         
         # Embedding dropout for regularization
         self.embedding_dropout = nn.Dropout(embedding_dropout)
+        
+        # Store normalization preference
+        self.normalize_output = normalize_output
         
         # RNN layer with optimized dimensions for GloVe
         if rnn_type.upper() == 'GRU':
@@ -98,8 +104,11 @@ class RNNEncoder(nn.Module):
         # Apply layer normalization for stability
         hidden = self.layer_norm(hidden)
         
-        # L2 normalize
-        return F.normalize(hidden, p=2, dim=1)
+        # Conditionally normalize output
+        if getattr(self, 'normalize_output', True):  # Default to True for backward compatibility
+            return F.normalize(hidden, p=2, dim=1)
+        else:
+            return hidden
 
 
 class TwoTowerModel(nn.Module):
@@ -174,6 +183,17 @@ def triplet_loss(triplet: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], margi
     return torch.clamp(pos_dist - neg_dist + margin, min=0.0).mean()
 
 
+def triplet_loss_euclidean(triplet: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], margin: float = 1.0) -> torch.Tensor:
+    """Triplet loss using Euclidean distance for normalized embeddings."""
+    query, pos_doc, neg_doc = triplet
+    
+    # Euclidean distances
+    pos_dist = torch.norm(query - pos_doc, p=2, dim=1)
+    neg_dist = torch.norm(query - neg_doc, p=2, dim=1)
+    
+    return torch.clamp(pos_dist - neg_dist + margin, min=0.0).mean()
+
+
 class ModelFactory:
     """Simple factory for creating models."""
     
@@ -189,9 +209,14 @@ class ModelFactory:
             dropout=config.get('DROPOUT'),
             embedding_dropout=config.get('EMBEDDING_DROPOUT', 0.0),
             freeze_embeddings=config.get('FREEZE_EMBEDDINGS', False),
-            fine_tune_embeddings=config.get('FINE_TUNE_EMBEDDINGS', True)
+            fine_tune_embeddings=config.get('FINE_TUNE_EMBEDDINGS', True),
+            normalize_pretrained_embeddings=config.get('NORMALIZE_PRETRAINED_EMBEDDINGS', True),
+            normalize_output=config.get('NORMALIZE_OUTPUT', True)
         )
     
     @staticmethod
     def get_loss_function(loss_type: str = 'triplet', margin: float = 1.0):
-        return lambda triplet: triplet_loss(triplet, margin) 
+        if loss_type == 'triplet_euclidean':
+            return lambda triplet: triplet_loss_euclidean(triplet, margin)
+        else:  # default to cosine-based triplet loss
+            return lambda triplet: triplet_loss(triplet, margin) 
