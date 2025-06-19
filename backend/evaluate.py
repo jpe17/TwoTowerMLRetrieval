@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent))
 from data_loader import DataLoader
-from utils import get_best_device
+from utils import get_best_device, load_config
 
 
 def load_embeddings_and_maps(artifacts_path, device):
@@ -47,23 +47,19 @@ def load_embeddings_and_maps(artifacts_path, device):
         return None, None, None, None, None
 
 
-def evaluate_with_saved_embeddings():
+def run_evaluation(artifacts_path: str, config: dict, device: torch.device):
     """
     Evaluate model performance using pre-computed embeddings. This is much faster as
     it doesn't require model loading or on-the-fly embedding generation.
     """
     # --- CONFIGURATION ---
-    # ❗ IMPORTANT: Change this path to point to your specific training run folder.
-    ARTIFACTS_PATH = "artifacts/two_tower_run_20250619_140401"
-    TEST_DATA_PATH = "data/ms_marco_test.parquet"
+    TEST_DATA_PATH = config.get("TEST_DATASET_PATH", "data/ms_marco_test.parquet")
     TOP_K = 10
     NUM_EXAMPLES_TO_SHOW = 10
     # ---------------------
     
-    device = get_best_device()
-    
     # 1. Load pre-computed embeddings and mappings
-    doc_embeddings, doc_to_idx, idx_to_doc, query_embeddings, query_to_idx = load_embeddings_and_maps(ARTIFACTS_PATH, device)
+    doc_embeddings, doc_to_idx, idx_to_doc, query_embeddings, query_to_idx = load_embeddings_and_maps(artifacts_path, device)
     if doc_embeddings is None:
         # The loading function already prints detailed errors
         return
@@ -143,4 +139,13 @@ def evaluate_with_saved_embeddings():
 
 
 if __name__ == "__main__":
-    evaluate_with_saved_embeddings() 
+    # --- Standalone Execution Config ---
+    # This allows running `python backend/evaluate.py` directly
+    ARTIFACTS_PATH = "artifacts/two_tower_run_20250619_142325"
+    CONFIG_PATH = "backend/config.json"
+    # -------------------------------------
+    
+    print("Running evaluation as a standalone script...")
+    device = get_best_device()
+    config = load_config(CONFIG_PATH)
+    run_evaluation(ARTIFACTS_PATH, config, device) 

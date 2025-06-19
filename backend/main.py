@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 import os
 import wandb
 import argparse
+import numpy as np
+import pickle
+import torch.nn.functional as F
 
 load_dotenv()  # Loads .env file
 
@@ -26,7 +29,7 @@ from tokenizer import PretrainedTokenizer
 from dataset import DataLoaderFactory
 from model import ModelFactory, TwoTowerModel
 from trainer import TwoTowerTrainer
-from evaluator import SimpleEvaluator, AdvancedEvaluator
+from evaluate import run_evaluation
 from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
     load_pretrained_embeddings, print_model_summary, load_model_artifacts,
@@ -78,61 +81,34 @@ def parse_args():
     return parser.parse_args()
 
 
-def demo_evaluator(model, trainer, tokenizer, device, datasets, config):
-    """Demo the evaluator with test data."""
-    if 'test' not in datasets or not datasets['test']:
-        return
+def load_embeddings_and_maps(artifacts_path, device):
+    """Loads all necessary embeddings and mappings from an artifacts directory."""
+    print(f"📂 Loading pre-computed embeddings from {artifacts_path}...")
     
-    print(f"\n🔍 Testing Evaluator...")
-    print("=" * 60)
-    
-    # Create retrieval evaluator
-    evaluator = SimpleEvaluator(trainer.model, tokenizer, device, config)
-    
-    # Get sample data from test set - create proper query-specific document sets
-    test_sample = datasets['test'][:20]  # Use fewer samples for cleaner demo
-    
-    # Process each demo query individually to ensure correct positive docs are included
-    demo_queries_data = []
-    seen_queries = set()
-    
-    for query, pos_doc, neg_doc in test_sample:
-        if query not in seen_queries and len(demo_queries_data) < 3:
-            seen_queries.add(query)
+    try:
+        # Load documents
+        doc_embeddings = torch.from_numpy(np.load(f"{artifacts_path}/document_embeddings.npy")).to(device)
+        with open(f"{artifacts_path}/doc_to_idx.pkl", 'rb') as f:
+            doc_to_idx = pickle.load(f)
+        
+        # Load queries
+        query_embeddings = torch.from_numpy(np.load(f"{artifacts_path}/query_embeddings.npy")).to(device)
+        with open(f"{artifacts_path}/query_to_idx.pkl", 'rb') as f:
+            query_to_idx = pickle.load(f)
             
-            # Create a focused document set for this query
-            query_docs = [pos_doc]  # Start with the correct positive document
-            
-            # Add some other documents from the test set as distractors
-            for other_query, other_pos, other_neg in test_sample[:15]:
-                if other_query != query:  # Don't add docs from same query
-                    query_docs.extend([other_pos, other_neg])
-            
-            # Remove duplicates while preserving order
-            unique_query_docs = []
-            seen = set()
-            for doc in query_docs:
-                if doc not in seen:
-                    unique_query_docs.append(doc)
-                    seen.add(doc)
-            
-            demo_queries_data.append({
-                'query': query,
-                'documents': unique_query_docs[:20],  # Limit to 20 docs for manageable demo
-                'positive_docs': [pos_doc]
-            })
-    
-    # Test the demo queries
-    for i, query_data in enumerate(demo_queries_data, 1):
-        print(f"\n📝 Demo Query {i}:")
-        results = evaluator.evaluate_query(
-            query=query_data['query'],
-            documents=query_data['documents'],
-            positive_docs=query_data['positive_docs']
-        )
-        evaluator.print_query_results(query_data['query'], results)
-    
-    print("\n" + "=" * 60)
+        # Create reverse mapping to get document text from its index
+        idx_to_doc = {idx: doc for doc, idx in doc_to_idx.items()}
+
+        print(f"  ✅ Loaded {len(doc_to_idx):,} document embeddings.")
+        print(f"  ✅ Loaded {len(query_to_idx):,} query embeddings.")
+        
+        return doc_embeddings, doc_to_idx, idx_to_doc, query_embeddings, query_to_idx
+        
+    except FileNotFoundError as e:
+        print(f"❌ Error: {e}.")
+        print(f"   Ensure the path '{artifacts_path}' is correct and contains the required .npy and .pkl files.")
+        print("   💡 Did you run training with the 'save_doc_embeddings=True' flag?")
+        return None, None, None, None, None
 
 
 def main():
@@ -243,8 +219,10 @@ def main():
     
     print(f"✅ Model saved to: {artifacts_dir}")
 
-    # Demo the evaluator
-    demo_evaluator(model, trainer, tokenizer, device, datasets, config)
+    # Run the full evaluation on the test set
+    print(f"\n\n📊 RUNNING FULL EVALUATION")
+    print("=" * 80)
+    run_evaluation(artifacts_dir, config, device)
 
     print(f"\n🎉 Training completed successfully!")
     print(f"📁 Trained model saved in: {artifacts_dir}")
