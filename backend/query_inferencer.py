@@ -86,7 +86,7 @@ class QueryInferencer:
 if __name__ == "__main__":
     # To test this, you need a trained model artifact
     # Example: artifacts/two_tower_run_20250619_140401/model_epoch_10.pt
-    model_path = "artifacts/two_tower_run_20250619_140401/full_model.pth"
+    model_path = "artifacts/two_tower_run_20250619_142325/full_model.pth"
     inferencer = QueryInferencer(model_path=model_path)
     
     # Test
@@ -94,4 +94,6 @@ if __name__ == "__main__":
     embedding = inferencer.get_query_embedding(query)
     print(f"Query: '{query}'")
     print(f"Embedding shape: {embedding.shape}")
-    print(f"Embedding norm: {np.linalg.norm(embedding):.4f}") 
+    print(f"Embedding norm: {np.linalg.norm(embedding):.4f}")
+    print(f"Full embedding:")
+    print(embedding) 
