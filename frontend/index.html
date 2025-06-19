@@ -144,9 +144,6 @@
     .result-title:hover {
       text-decoration: underline;
     }
-    .result-title:visited {
-      color: #681da8;
-    }
     .result-snippet {
       color: #4d5156;
       font-size: 14px;
@@ -280,7 +277,7 @@
             <div class="result-favicon">📄</div>
             <span>${fakeUrl}</span>
           </div>
-          <a href="#" class="result-title" onclick="selectResult(${index})">${highlightedTitle}</a>
+          <a href="#result-${index}" class="result-title" onclick="selectResult(${index})">${highlightedTitle}</a>
           <div class="result-snippet">${highlightedSnippet}</div>
           <div class="result-score">Relevance: ${(score * 100).toFixed(1)}%</div>
         `;
@@ -300,12 +297,12 @@
       
       if (queryWords.length === 0) return text;
       
-      // Create regex pattern for highlighting
+      // Create regex pattern for highlighting - removed word boundaries for more flexible matching
       const pattern = queryWords.map(word => 
         word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
       ).join('|');
       
-      const regex = new RegExp(`\\b(${pattern})\\b`, 'gi');
+      const regex = new RegExp(`(${pattern})`, 'gi');
       
       // Replace matches with highlighted versions
       return text.replace(regex, '<span class="highlight">$1</span>');
