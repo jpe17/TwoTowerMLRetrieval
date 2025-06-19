@@ -38,6 +38,7 @@ def main():
     data_loader = DataLoader(config)
     datasets = data_loader.load_datasets()
     test_triplets = datasets['test']
+    print("Loaded dataset length: ", len(test_triplets))
 
     # Load pretrained embeddings
     pretrained_embeddings = np.load(config['EMBEDDINGS_PATH'])
@@ -49,10 +50,10 @@ def main():
     model.eval()
 
     # Create evaluator
-    evaluator = AdvancedEvaluator(model, tokenizer, device)
+    evaluator = AdvancedEvaluator(model, tokenizer, device, top_k=5)
 
     # Batch evaluation with tqdm progress bar
-    batch_size = 32  # Adjust based on your GPU memory
+    batch_size = 32 
     num_samples = len(test_triplets)
     all_query_metrics = []
     all_top_results = []
@@ -65,6 +66,27 @@ def main():
 
     # Aggregate metrics over all queries
     final_metrics = aggregate_metrics(all_query_metrics)
+    
+    # Print a few sample query metrics and top results
+    print("\n📋 Example Query Metrics:")
+    print("-" * 60)
+    for i, m in enumerate(all_query_metrics[5:10], 1):
+        print(f"Query {i}:")
+        print(f"  precision@{evaluator.top_k}: {m['precision@k']:.4f}")
+        print(f"  recall@{evaluator.top_k}:    {m['recall@k']:.4f}")
+        print(f"  mrr:                        {m['mrr']:.4f}")
+        print(f"  ndcg@{evaluator.top_k}:     {m['ndcg@k']:.4f}")
+        print()
+
+    print("\n Example Top Results (First 5 Queries):")
+    print("-" * 60)
+    for i, res in enumerate(all_top_results[5:10], 1):
+        print(f"Query {i}: {res['query']}")
+        print("Top docs:")
+        for j, (doc, score, correct) in enumerate(zip(res['top_docs'], res['top_scores'], res['is_correct']), 1):
+            print(f"  {j}. {'✅' if correct else '❌'} {doc[:50]}... (score: {score:.4f})")
+        print()
+    
     print("\nFinal aggregated metrics (over all queries):")
     evaluator.print_metrics(final_metrics)
 
