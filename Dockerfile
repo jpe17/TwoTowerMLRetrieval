@@ -1,22 +1,43 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim
+# Multi-stage build for production deployment
+FROM python:3.9-slim as builder
 
-# Set the working directory in the container
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
 WORKDIR /app
 
-# Copy the requirements file into the container at the working directory
+# Copy requirements and install dependencies
 COPY requirements.txt .
-
-# Install the packages specified in requirements.txt
-# --no-cache-dir reduces image size, and --trusted-host is for network reliability
 RUN pip install --no-cache-dir --trusted-host pypi.python.org -r requirements.txt
 
-# Copy the rest of your application's code into the container
+# Copy the application code
 COPY . .
+
+# Validate deployment artifacts
+RUN python deployment_setup.py
+
+# Production stage
+FROM python:3.9-slim as production
+
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --trusted-host pypi.python.org -r requirements.txt
+
+# Copy application code and built artifacts from builder stage
+COPY --from=builder /app .
 
 # Make port 8888 available to the world outside this container
 EXPOSE 8888
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8888/ || exit 1
+
 # Run the uvicorn server when the container launches
-# It will serve your FastAPI application from frontend/main.py
 CMD ["uvicorn", "frontend.main:app", "--host", "0.0.0.0", "--port", "8888"] 

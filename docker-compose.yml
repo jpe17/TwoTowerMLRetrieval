@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8888:8888"
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      # Mount artifacts and chroma store as volumes for persistence
+      - ./artifacts:/app/artifacts:ro
+      - ./frontend/chroma_store:/app/frontend/chroma_store:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s 

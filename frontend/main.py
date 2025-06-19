@@ -22,9 +22,26 @@ from query_inferencer import QueryInferencer
 import chromadb
 
 # --- CONFIGURATION ---
-# IMPORTANT: Update this with the folder name from your latest training run.
-# Example: ARTIFACTS_PATH = PROJECT_DIR / "artifacts" / "run_20240101_120000"
-ARTIFACTS_PATH = PROJECT_DIR / "artifacts" / "run-20250619_212044" # 👈 CHANGE THIS
+# IMPORTANT: Now dynamically finds the latest artifacts directory
+def find_latest_artifacts():
+    artifacts_base = PROJECT_DIR / "artifacts"
+    if not artifacts_base.exists():
+        return None
+    
+    # Find all run directories
+    run_dirs = [d for d in artifacts_base.iterdir() if d.is_dir() and d.name.startswith('run')]
+    if not run_dirs:
+        return None
+    
+    # Return the most recent one
+    return max(run_dirs, key=lambda x: x.stat().st_mtime)
+
+ARTIFACTS_PATH = find_latest_artifacts()
+if ARTIFACTS_PATH is None:
+    print("FATAL: No artifacts directory found. Please train a model first.")
+    sys.exit(1)
+
+print(f"📁 Using artifacts from: {ARTIFACTS_PATH}")
 HYBRID_ALPHA = 0.5 # Weight for dense search (1.0 = pure dense, 0.0 = pure TF-IDF)
 
 CHROMA_STORE_PATH = str(APP_DIR / "chroma_store")

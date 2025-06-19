@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: twotower-retrieval
+    env: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: standard  # Adjust based on your needs
+    region: oregon  # Choose your preferred region
+    branch: main    # Or your default branch
+    envVars:
+      - key: PORT
+        value: 8888
+      - key: PYTHONPATH
+        value: /app
+      - key: PYTHONUNBUFFERED
+        value: 1
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+    disk:
+      name: twotower-disk
+      size: 10GB  # For storing artifacts and chroma_store
+      mountPath: /app/persistent
+    buildCommand: |
+      echo "🚀 Building TwoTower ML Retrieval for Render..."
+    startCommand: uvicorn frontend.main:app --host 0.0.0.0 --port 8888 
