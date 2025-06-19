@@ -7,7 +7,7 @@ This script can be run on any training artifacts directory to assess model healt
 
 Usage:
     python backend/check_embeddings.py [artifacts_path]
-    python backend/check_embeddings.py artifacts/two_tower_run_20250619_163538
+    python backend/check_embeddings.py artifacts/two_tower_run_20250619_174945
 """
 
 import torch

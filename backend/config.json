@@ -5,7 +5,7 @@
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
     
-    "SUBSAMPLE_RATIO": 0.01,
+    "SUBSAMPLE_RATIO": 0.001,
     "NUM_TRIPLETS_PER_QUERY": 10,
     
     "EMBED_DIM": 200,
@@ -16,16 +16,26 @@
     "FREEZE_EMBEDDINGS": false,
     "FINE_TUNE_EMBEDDINGS": true,
     
-    "BATCH_SIZE": 512,
-    "EPOCHS": 5,
+    "BATCH_SIZE": 64,
+    "EPOCHS": 10,
     "DEVICE": "mps",
     
-    "LOSS_TYPE": "triplet",
-    "MARGIN": 1.0,
+    "LOSS_TYPE": "adaptive_triplet",
+    "MARGIN": 0.5,
     "NORMALIZE_OUTPUT": true,
     "NORMALIZE_PRETRAINED_EMBEDDINGS": true,
     
-    "LR": 0.001,
+    "POOLING_STRATEGY": "mean",
+    "DROPOUT": 0.1,
+    "EMBEDDING_DROPOUT": 0.05,
+    
+    "LR": 0.0002,
+    "WEIGHT_DECAY": 1e-4,
+    "GRAD_CLIP": 1.0,
+    
+    "SCHEDULER_TYPE": "onecycle",
+    "MAX_LR": 0.001,
+    "WARMUP_PCT": 0.1,
     
     "TASK_MODE": "retrieval"
 } 

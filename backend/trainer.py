@@ -18,10 +18,11 @@ class TwoTowerTrainer:
         self.config = config
         self.device = device
         
-        # Create optimizer and loss function directly
+        # Create optimizer with weight decay
         self.optimizer = torch.optim.Adam(
             model.parameters(), 
-            lr=config.get('LR', 0.001)
+            lr=config.get('LR', 0.001),
+            weight_decay=config.get('WEIGHT_DECAY', 0.0)
         )
         
         self.loss_function = ModelFactory.get_loss_function(
