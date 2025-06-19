@@ -6,14 +6,16 @@
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
     "SUBSAMPLE_RATIO": 0.05,
     "NUM_TRIPLETS_PER_QUERY": 10,
-    "HIDDEN_DIM": 64,
     "LR": 0.001,
     "MARGIN": 0.5,
     "BATCH_SIZE": 512,
     "EPOCHS": 5,
-    "DEVICE": "mps",
+    "DEVICE": "cuda",
     "NUM_LAYERS": 2,
     "MEMORY_CLEANUP_FREQUENCY": 50,
-    "TASK_MODE": "retrieval"
+    "TASK_MODE": "retrieval",
+    "VOCAB_SIZE": 400000,
+    "EMBED_DIM": 200,
+    "HIDDEN_DIM": 128
 } 
 

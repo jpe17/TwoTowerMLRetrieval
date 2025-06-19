@@ -314,7 +314,7 @@ class AdvancedEvaluator:
             # Ground truth: 1 if doc is correct, 0 otherwise
             relevant_set = set(positive_docs_dict.get(query, []))
             ground_truth = [1 if doc in relevant_set else 0 for doc in documents]
-            pred_scores = query_scores.cpu().numpy()
+            pred_scores = query_scores.detach().cpu().numpy()
             pred_rank = (-pred_scores).argsort()  # argsort in descending order
 
             # Compute metrics
@@ -400,3 +400,122 @@ class AdvancedEvaluator:
         print("-" * 40)
         df = pd.DataFrame([metrics])
         print(df.to_string(index=False))
+
+
+    def evaluate_triplets(self, triplets: List[Tuple[str, str, str]], embeddings_path: Optional[str] = None):
+        """
+        Evaluate a batch of triplets (query, positive_doc, negative_doc).
+        This method automatically constructs the required query/document lists and positive_docs_dict.
+        
+        Args:
+            triplets: List of (query, positive_doc, negative_doc) tuples
+            embeddings_path: Optional path to precomputed document embeddings
+        
+        Returns:
+            metrics: Dict of evaluation metrics
+            top_results: List of dicts with top results for each query
+
+        Usage:
+        evaluator = AdvancedEvaluator(model, tokenizer, device)
+        metrics, top_results = evaluator.evaluate_triplets(triplets)
+        """
+        from collections import defaultdict
+
+        queries = set()
+        documents = set()
+        positive_docs_dict = defaultdict(list)
+
+        for query, pos_doc, neg_doc in triplets:
+            queries.add(query)
+            documents.add(pos_doc)
+            documents.add(neg_doc)
+            positive_docs_dict[query].append(pos_doc)
+
+        queries = list(queries)
+        documents = list(documents)
+        # Remove duplicate positives for each query
+        positive_docs_dict = {q: list(set(docs)) for q, docs in positive_docs_dict.items()}
+
+        return self.evaluate_batch(queries, documents, positive_docs_dict, embeddings_path)
+
+    def evaluate_batch_per_query(self, queries: List[str], documents: List[str], positive_docs_dict: Dict[str, List[str]],
+                            embeddings_path: Optional[str] = None) -> Tuple[List[Dict], List[Dict]]:
+        # Encode all queries
+        query_vecs = self.encode_batch(queries)
+
+        # Load or compute document embeddings
+        if embeddings_path and os.path.exists(embeddings_path):
+            doc_embeddings = torch.tensor(np.load(embeddings_path), device=self.device)
+        else:
+            doc_embeddings = self.encode_batch(documents)
+
+        # Compute cosine similarity: shape (num_queries, num_docs)
+        scores = F.cosine_similarity(query_vecs.unsqueeze(1), doc_embeddings.unsqueeze(0), dim=2)
+
+        query_metrics = []
+        top_results = []
+
+        for i, (query, query_scores) in enumerate(zip(queries, scores)):
+            # Get top_k indices and scores
+            top_scores, top_indices = torch.topk(query_scores, k=self.top_k, dim=0)
+            top_docs = [documents[idx.item()] for idx in top_indices]
+            top_scores = top_scores.tolist()
+
+            # Ground truth: 1 if doc is correct, 0 otherwise
+            relevant_set = set(positive_docs_dict.get(query, []))
+            ground_truth = [1 if doc in relevant_set else 0 for doc in documents]
+            pred_scores = query_scores.detach().cpu().numpy()
+            pred_rank = (-pred_scores).argsort()  # argsort in descending order
+
+            # Compute metrics
+            correct_in_top = sum(1 for doc in top_docs if doc in relevant_set)
+            precision_at_k = correct_in_top / self.top_k
+
+            total_relevant = len(relevant_set)
+            recall_at_k = correct_in_top / max(total_relevant, 1)
+
+            mrr = 0.0
+            for rank, idx in enumerate(pred_rank, 1):
+                if ground_truth[idx]:
+                    mrr = 1.0 / rank
+                    break
+
+            ndcg = ndcg_score([ground_truth], [pred_scores], k=self.top_k)
+
+            query_metrics.append({
+                'precision@k': precision_at_k,
+                'recall@k': recall_at_k,
+                'mrr': mrr,
+                'ndcg@k': ndcg,
+                'query': query
+            })
+
+            top_results.append({
+                'query': query,
+                'top_docs': top_docs,
+                'top_scores': top_scores,
+                'is_correct': [doc in relevant_set for doc in top_docs]
+            })
+
+        return query_metrics, top_results
+
+    def evaluate_triplets_per_query(self, triplets: List[Tuple[str, str, str]], embeddings_path: Optional[str] = None):
+        from collections import defaultdict
+
+        queries = set()
+        documents = set()
+        positive_docs_dict = defaultdict(list)
+
+        for query, pos_doc, neg_doc in triplets:
+            queries.add(query)
+            documents.add(pos_doc)
+            documents.add(neg_doc)
+            positive_docs_dict[query].append(pos_doc)
+
+        queries = list(queries)
+        documents = list(documents)
+        # Remove duplicate positives for each query
+        positive_docs_dict = {q: list(set(docs)) for q, docs in positive_docs_dict.items()}
+
+        return self.evaluate_batch_per_query(queries, documents, positive_docs_dict, embeddings_path)
+

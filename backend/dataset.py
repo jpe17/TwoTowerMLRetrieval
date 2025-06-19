@@ -88,10 +88,10 @@ class DataLoaderFactory:
             dataloader = DataLoader(
                 dataset,
                 batch_size=batch_size,
-                shuffle=(split == 'train'),
-                num_workers=2 if split == 'train' else 1,  # More workers for training
+                shuffle=(split == 'test'),
+                num_workers=2 if split == 'test' else 1,  # More workers for training
                 collate_fn=collate_fn,
-                drop_last=(split == 'train')
+                drop_last=(split == 'test')
             )
             
             dataloaders[split] = dataloader

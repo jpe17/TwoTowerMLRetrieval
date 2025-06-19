@@ -20,11 +20,13 @@ class RNNEncoder(nn.Module):
     ):
         super().__init__()
         
+        print(f"----> vocab_size: {vocab_size}, embed_dim: {embed_dim}")
         # Embedding layer
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
         
         # Load pretrained embeddings
         if pretrained_embeddings is not None:
+            print(f"pretrained_embeddings shape: {pretrained_embeddings.shape}")
             self.embedding.weight.data.copy_(torch.from_numpy(pretrained_embeddings))
         
         # RNN layer
