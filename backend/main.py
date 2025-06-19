@@ -27,7 +27,7 @@ from tokenizer import PretrainedTokenizer
 from dataset import DataLoaderFactory
 from model import ModelFactory, TwoTowerModel
 from trainer import TwoTowerTrainer
-from evaluate import run_evaluation
+from eval_test import run_evaluation
 from utils import (
     load_config, validate_config, get_best_device, setup_memory_optimization,
     load_pretrained_embeddings, print_model_summary, load_model_artifacts,
