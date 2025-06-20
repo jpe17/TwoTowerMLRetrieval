@@ -12,6 +12,7 @@ import pandas as pd
 from typing import Dict, Optional
 from sklearn.metrics import ndcg_score
 from collections import defaultdict
+from tqdm import tqdm
 
 
 class SimpleEvaluator:
@@ -523,4 +524,83 @@ class AdvancedEvaluator:
         positive_docs_dict = {q: list(set(docs)) for q, docs in positive_docs_dict.items()}
 
         return self.evaluate_batch_per_query(queries, documents, positive_docs_dict, embeddings_path)
+    #===============================================================================================================
+
+    def evaluate_with_precomputed_doc_embeddings(
+        self,
+        triplets: List[Tuple[str, str, str]],
+        doc_embeddings: np.ndarray,
+        idx_to_doc: List[str],
+        top_k: int = 5
+    ):
+        """
+        Evaluate queries using precomputed document embeddings.
+        Args:
+            triplets: List of (query, positive_doc, negative_doc)
+            doc_embeddings: np.ndarray of shape (num_docs, embed_dim)
+            idx_to_doc: List mapping embedding index to document text
+            top_k: Number of top results to consider
+        Returns:
+            metrics: Dict of evaluation metrics
+            top_results: List of dicts with top results for each query
+        """
+        all_query_metrics = []
+        all_top_results = []
+
+        # Build a mapping from doc text to index for fast lookup
+        doc_to_idx = {doc: idx for idx, doc in enumerate(idx_to_doc)}
+
+        for query, pos_doc, neg_doc in tqdm(triplets, desc="Evaluating queries"):
+            query_tokens = self.tokenizer.encode(query)
+            if not query_tokens:  # Skip empty queries
+                continue
+            query_tensor = torch.tensor(query_tokens, dtype=torch.long).unsqueeze(0).to(self.device)
+            with torch.no_grad():
+                query_embedding = self.model.encode_query(query_tensor).cpu().numpy()
+
+            # Compute cosine similarities
+            sims = np.dot(doc_embeddings, query_embedding.squeeze())  # (num_docs,)
+
+            # Get top-k indices
+            top_k_indices = np.argsort(sims)[-top_k:][::-1]
+            top_k_docs = [idx_to_doc[i] for i in top_k_indices]
+            top_k_scores = [sims[i] for i in top_k_indices]
+
+            # Evaluate: is the positive doc in top-k?
+            is_correct = [doc == pos_doc for doc in top_k_docs]
+
+            # Metrics
+            precision_at_k = int(pos_doc in top_k_docs) / top_k
+            recall_at_k = int(pos_doc in top_k_docs)  # Only one positive per query
+            mrr = 0.0
+            for rank, doc in enumerate(top_k_docs, 1):
+                if doc == pos_doc:
+                    mrr = 1.0 / rank
+                    break
+
+            # NDCG: 1 if pos_doc is in top-k, else 0 (since only one positive)
+            ndcg = 1.0 / np.log2(np.where(np.array(top_k_docs) == pos_doc)[0][0] + 2) if pos_doc in top_k_docs else 0.0
+
+            all_query_metrics.append({
+                'precision@k': precision_at_k,
+                'recall@k': recall_at_k,
+                'mrr': mrr,
+                'ndcg@k': ndcg,
+                'query': query
+            })
+            all_top_results.append({
+                'query': query,
+                'top_docs': top_k_docs,
+                'top_scores': top_k_scores,
+                'is_correct': is_correct
+            })
+
+        # Aggregate metrics
+        metrics = {
+            'precision@k': np.mean([m['precision@k'] for m in all_query_metrics]),
+            'recall@k': np.mean([m['recall@k'] for m in all_query_metrics]),
+            'mrr': np.mean([m['mrr'] for m in all_query_metrics]),
+            'ndcg@k': np.mean([m['ndcg@k'] for m in all_query_metrics]),
+        }
+        return metrics, all_top_results
 

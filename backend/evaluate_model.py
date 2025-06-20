@@ -5,8 +5,9 @@ from tokenizer import PretrainedTokenizer
 from data_loader import DataLoader
 import json
 from tqdm import tqdm
-from model import ModelFactory
 import os
+import pickle
+from tqdm import tqdm
 
 def aggregate_metrics(metrics_list):
     """Aggregate metrics from multiple batches by averaging values."""
@@ -40,58 +41,50 @@ def main():
     test_triplets = datasets['test']
     print("Loaded dataset length: ", len(test_triplets))
 
-    # Load pretrained embeddings
-    pretrained_embeddings = np.load(config['EMBEDDINGS_PATH'])
+    # Load precomputed document embeddings and mapping
+    doc_embeddings = np.load('data/test_document_embeddings.npy')[:50]
+    with open('data/test_documents.txt', 'r', encoding='utf-8') as f:
+        idx_to_doc = [line.strip() for line in f]
 
-    # Build model architecture
-    model = ModelFactory.create_two_tower_model(config, pretrained_embeddings)
+    # Load model
     model = torch.load('data/full_model.pth', map_location=device)
-    model.to(device)
     model.eval()
 
     # Create evaluator
     evaluator = AdvancedEvaluator(model, tokenizer, device, top_k=5)
 
-    # Batch evaluation with tqdm progress bar
-    batch_size = 32 
-    num_samples = len(test_triplets)
-    all_query_metrics = []
-    all_top_results = []
+    # Evaluate using precomputed doc embeddings
+    metrics, top_results = evaluator.evaluate_with_precomputed_doc_embeddings(
+        test_triplets, doc_embeddings, idx_to_doc, top_k=5
+    )
 
-    for i in tqdm(range(0, num_samples, batch_size), desc="Evaluating batches"):
-        batch = test_triplets[i:i+batch_size]
-        query_metrics, top_results = evaluator.evaluate_triplets_per_query(batch)
-        all_query_metrics.extend(query_metrics)
-        all_top_results.extend(top_results)
+    # Print and save results
+    evaluator.print_metrics(metrics)
 
-    # Aggregate metrics over all queries
-    final_metrics = aggregate_metrics(all_query_metrics)
-    
-    # Print a few sample query metrics and top results
-    print("\n📋 Example Query Metrics:")
-    print("-" * 60)
-    for i, m in enumerate(all_query_metrics[5:10], 1):
-        print(f"Query {i}:")
-        print(f"  precision@{evaluator.top_k}: {m['precision@k']:.4f}")
-        print(f"  recall@{evaluator.top_k}:    {m['recall@k']:.4f}")
-        print(f"  mrr:                        {m['mrr']:.4f}")
-        print(f"  ndcg@{evaluator.top_k}:     {m['ndcg@k']:.4f}")
-        print()
+    # Save detailed results for N queries
+    N_EXAMPLES_TO_SAVE = 20 
+    detailed_results = []
+    for i, res in enumerate(top_results[:N_EXAMPLES_TO_SAVE]):
+        detailed_results.append({
+            "query": res['query'],
+            "top_docs": [
+                {
+                    "doc": doc,
+                    "score": float(score),
+                    "is_positive": correct
+                }
+                for doc, score, correct in zip(res['top_docs'], res['top_scores'], res['is_correct'])
+            ],
+            "actual_positive_doc": next(
+                (doc for doc, correct in zip(res['top_docs'], res['is_correct']) if correct), None
+            )
+        })
 
-    print("\n Example Top Results (First 5 Queries):")
-    print("-" * 60)
-    for i, res in enumerate(all_top_results[5:10], 1):
-        print(f"Query {i}: {res['query']}")
-        print("Top docs:")
-        for j, (doc, score, correct) in enumerate(zip(res['top_docs'], res['top_scores'], res['is_correct']), 1):
-            print(f"  {j}. {'✅' if correct else '❌'} {doc[:50]}... (score: {score:.4f})")
-        print()
-    
-    print("\nFinal aggregated metrics (over all queries):")
-    evaluator.print_metrics(final_metrics)
+    os.makedirs("results", exist_ok=True)
+    with open(f"results/detailed_top_results_{N_EXAMPLES_TO_SAVE}.json", "w", encoding="utf-8") as f:
+        json.dump(detailed_results, f, indent=2, ensure_ascii=False)
 
-    # Save results
-    save_results(final_metrics, all_top_results)
+    print(f"Saved detailed top-{evaluator.top_k} results for {N_EXAMPLES_TO_SAVE} queries to results/detailed_top_results_{N_EXAMPLES_TO_SAVE}.json")
 
 if __name__ == "__main__":
     main()
