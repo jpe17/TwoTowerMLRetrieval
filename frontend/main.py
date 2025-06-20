@@ -110,67 +110,68 @@ async def serve_frontend():
 @app.post("/search")
 def search(input: QueryInput):
     """
-    Ultra-fast hybrid search (millisecond response):
-    1. Get top 20 semantic + keyword candidates
-    2. Score with fast operations only
-    3. Return top 10 results
+    Simple 5-step hybrid search:
+    1. Get top 50 documents via semantic similarity
+    2. Compute semantic scores for those 50
+    3. Compute TF-IDF scores for those 50 
+    4. Combine using alpha weighting
+    5. Return top 10 by final score
     """
     import time
     start = time.time()
     alpha = input.alpha
     
-    # --- Get candidates from both methods ---
-    # Semantic candidates (ANN)
+    # Step 1: Get top 50 documents via semantic similarity
     query_embedding = inferencer.get_query_embedding(input.query)
     semantic_results = collection.query(
         query_embeddings=[query_embedding.tolist()], 
-        n_results=20
+        n_results=50
     )
     
-    # Keyword candidates (TF-IDF)
+    top_docs = semantic_results["documents"][0]
+    semantic_distances = semantic_results["distances"][0]
+    
+    # Step 2: Compute semantic scores (0-1)
+    semantic_scores = [1 - dist for dist in semantic_distances]
+    
+    # Step 3: Compute TF-IDF scores for those 50 documents
     query_tfidf = tfidf_vectorizer.transform([input.query])
-    tfidf_scores = cosine_similarity(query_tfidf, doc_tfidf_matrix)[0]
-    top_tfidf_idx = np.argsort(tfidf_scores)[::-1][:20]
+    tfidf_scores = []
     
-    # --- Combine and score all candidates ---
-    candidates = {}
-    
-    # Add semantic candidates with their scores
-    for doc, dist in zip(semantic_results["documents"][0], semantic_results["distances"][0]):
-        candidates[doc] = {"semantic": 1-dist, "tfidf": 0.0}
-    
-    # Add TF-IDF candidates with their scores  
-    for idx in top_tfidf_idx:
-        doc = all_documents_list[idx]
-        tfidf_score = tfidf_scores[idx]
-        if doc in candidates:
-            candidates[doc]["tfidf"] = tfidf_score
+    for doc in top_docs:
+        doc_idx = doc_to_index.get(doc)
+        if doc_idx is not None:
+            # Use pre-computed TF-IDF matrix
+            tfidf_score = cosine_similarity(query_tfidf, doc_tfidf_matrix[doc_idx:doc_idx+1])[0][0]
         else:
-            candidates[doc] = {"semantic": 0.0, "tfidf": tfidf_score}
+            # Compute on-the-fly if not in index
+            doc_tfidf = tfidf_vectorizer.transform([doc])
+            tfidf_score = cosine_similarity(query_tfidf, doc_tfidf)[0][0]
+        tfidf_scores.append(float(tfidf_score))  # Ensure float conversion
     
-    # Skip missing semantic scores for speed - they stay 0.0
+    # Debug: Print score ranges
+    print(f"🔍 Semantic scores range: {min(semantic_scores):.3f} - {max(semantic_scores):.3f}")
+    print(f"🔍 TF-IDF scores range: {min(tfidf_scores):.3f} - {max(tfidf_scores):.3f}")
     
-    # Fill missing TF-IDF scores
-    for doc, scores in candidates.items():
-        if scores["tfidf"] == 0.0:
-            doc_idx = doc_to_index.get(doc)
-            if doc_idx is not None:
-                candidates[doc]["tfidf"] = tfidf_scores[doc_idx]
-    
-    # --- Rank and return ---
+    # Step 4: Calculate final scores using alpha
     results = []
-    for doc, scores in candidates.items():
-        combined = alpha * scores["semantic"] + (1-alpha) * scores["tfidf"]
+    for i, doc in enumerate(top_docs):
+        semantic_score = float(semantic_scores[i])
+        tfidf_score = float(tfidf_scores[i])
+        final_score = alpha * semantic_score + (1 - alpha) * tfidf_score
+        
         results.append({
             "doc": doc,
-            "score": combined,
-            "dense_score": scores["semantic"],
-            "tfidf_score": scores["tfidf"]
+            "score": float(final_score),
+            "dense_score": semantic_score,
+            "tfidf_score": tfidf_score
         })
     
+    # Step 5: Sort by final score and return top 10
     results.sort(key=lambda x: x["score"], reverse=True)
+    top_10 = results[:10]
     
-    elapsed = (time.time() - start) * 1000  # Convert to milliseconds
+    elapsed = (time.time() - start) * 1000
     print(f"⚡ Search completed in {elapsed:.1f}ms")
     
     return {
@@ -178,7 +179,7 @@ def search(input: QueryInput):
         "alpha": alpha,
         "results": [
             {"rank": i+1, "id": f"result-{i+1}", **res} 
-            for i, res in enumerate(results[:10])
+            for i, res in enumerate(top_10)
         ]
     }
 

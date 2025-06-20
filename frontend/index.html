@@ -797,6 +797,7 @@
       const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']);
       const queryWords = query.toLowerCase()
         .split(/\s+/)
+        .map(word => word.replace(/[^\w]/g, '')) // Remove punctuation from query words
         .filter(word => word.length > 2 && !stopWords.has(word));
       
       if (queryWords.length === 0) return text;
@@ -805,7 +806,8 @@
         word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       ).join('|');
       
-      const regex = new RegExp(`(${pattern})`, 'gi');
+      // Use word boundaries to match whole words, regardless of surrounding punctuation
+      const regex = new RegExp(`\\b(${pattern})\\b`, 'gi');
       
       return text.replace(regex, '<span class="highlight">$1</span>');
     }
