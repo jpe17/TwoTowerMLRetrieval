@@ -8,4 +8,4 @@ backend/__pycache__
 venv/
 frontend/chroma_store
 .DS_Store
-results\detailed_top_results_20.json
+results/detailed_top_results_20.jon
