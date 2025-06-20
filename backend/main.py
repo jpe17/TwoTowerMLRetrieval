@@ -30,6 +30,7 @@ sys.path.append(str(Path(__file__).parent))
 from data_loader import DataLoader as RetrievalDataLoader
 from tokenizer import PretrainedTokenizer
 from model import TwoTowerModel, triplet_loss_cosine
+from evaluators import BatchEvaluator, CorpusEvaluator, TestEvaluator
 
 # --- DATASET AND COLLATE FUNCTION ---
 
@@ -157,134 +158,7 @@ def save_inference_artifacts(output_dir: Path, model: TwoTowerModel, config: Dic
 
 # --- EVALUATION ---
 
-def evaluate(model: TwoTowerModel, val_loader: DataLoader, device: torch.device, config: Dict, top_k: List[int] = [1, 5, 10]):
-    """Evaluates the model on the validation set, returning metrics and validation loss."""
-    model.eval()
-    all_query_embs, all_doc_embs = [], []
-    total_val_loss = 0
-    
-    print("\n🔬 Generating embeddings and calculating validation loss...")
-    with torch.no_grad():
-        for queries, pos_docs, neg_docs in val_loader:
-            queries, pos_docs, neg_docs = queries.to(device), pos_docs.to(device), neg_docs.to(device)
-            
-            query_emb = model.encode_query(queries)
-            doc_emb = model.encode_document(pos_docs)
-            neg_emb = model.encode_document(neg_docs)
-            
-            # Calculate validation loss for the batch
-            loss = triplet_loss_cosine((query_emb, doc_emb, neg_emb), margin=config.get('MARGIN', 0.2))
-            total_val_loss += loss.item()
-            
-            all_query_embs.append(query_emb)
-            all_doc_embs.append(doc_emb)
-
-    if not all_query_embs:
-        print("Evaluation set is empty.")
-        return {}, 0
-
-    query_embs = torch.cat(all_query_embs)
-    doc_embs = torch.cat(all_doc_embs)
-    
-    # Calculate similarity scores (batch-wise dot product)
-    sim_scores = torch.matmul(query_embs, doc_embs.t())
-    
-    # Calculate metrics
-    mrr_scores = []
-    recall_at_k = {k: 0 for k in top_k}
-    num_queries = sim_scores.size(0)
-
-    for i in range(num_queries):
-        # The positive document for query 'i' is at index 'i'
-        scores = sim_scores[i]
-        
-        # Sort scores to get rank of positive doc
-        _, sorted_indices = torch.sort(scores, descending=True)
-        
-        # Find rank of the positive document
-        pos_doc_rank = (sorted_indices == i).nonzero(as_tuple=True)[0].item() + 1
-        
-        # MRR
-        mrr_scores.append(1.0 / pos_doc_rank)
-        
-        # Recall@k
-        for k in top_k:
-            if pos_doc_rank <= k:
-                recall_at_k[k] += 1
-    
-    final_metrics = {f"Recall@{k}": count / num_queries for k, count in recall_at_k.items()}
-    final_metrics["MRR"] = np.mean(mrr_scores)
-    
-    avg_val_loss = total_val_loss / len(val_loader)
-    
-    return final_metrics, avg_val_loss
-
-def run_test_evaluation(model, test_data, tokenizer, device, num_examples=10, top_k=5):
-    """Runs a qualitative evaluation on the test set."""
-    model.eval()
-
-    # 1. Collect all unique queries, documents, and ground truth from the test set
-    all_queries = {triplet[0] for triplet in test_data}
-    all_docs = {triplet[1] for triplet in test_data}.union({triplet[2] for triplet in test_data})
-    
-    ground_truth = {}
-    for query, pos_doc, _ in test_data:
-        if query not in ground_truth:
-            ground_truth[query] = set()
-        ground_truth[query].add(pos_doc)
-
-    unique_queries = list(all_queries)
-    unique_docs = list(all_docs)
-    
-    print(f"\n🧪 Running Test Evaluation on {len(unique_queries)} queries and {len(unique_docs)} documents...")
-
-    # 2. Generate embeddings for all unique docs
-    print("  Generating document embeddings...")
-    doc_embs = []
-    with torch.no_grad():
-        # Use a batch size for embedding generation to avoid OOM
-        for i in range(0, len(unique_docs), 64):
-            batch_docs = unique_docs[i:i+64]
-            batch_tokens = [torch.tensor(tokenizer.encode(doc), dtype=torch.long) for doc in batch_docs]
-            padded_batch = pad_sequence(batch_tokens, batch_first=True, padding_value=0).to(device)
-            embeddings = model.encode_document(padded_batch)
-            doc_embs.append(embeddings)
-    doc_embs = torch.cat(doc_embs)
-
-    # 3. Select sample queries and evaluate
-    sample_queries = random.sample(unique_queries, min(num_examples, len(unique_queries)))
-    
-    print("\n" + "="*80)
-    print(f"🔍 QUALITATIVE EXAMPLES (Top {top_k})")
-    print("="*80)
-
-    with torch.no_grad():
-        for i, query in enumerate(sample_queries):
-            print(f"\n--- Example {i+1}/{len(sample_queries)} ---")
-            print(f"❓ Query: {query}")
-            
-            # Get query embedding
-            query_tokens = torch.tensor(tokenizer.encode(query), dtype=torch.long).unsqueeze(0).to(device)
-            query_emb = model.encode_query(query_tokens)
-
-            # Compute similarities
-            sim_scores = torch.matmul(query_emb, doc_embs.t()).squeeze(0)
-            
-            # Get top K results
-            top_scores, top_indices = torch.topk(sim_scores, k=top_k)
-            
-            print("\n🎯 Top 5 Retrieved Documents:")
-            retrieved_pos_count = 0
-            for rank, doc_idx in enumerate(top_indices):
-                retrieved_doc = unique_docs[doc_idx.item()]
-                is_positive = retrieved_doc in ground_truth.get(query, set())
-                marker = "✅" if is_positive else "❌"
-                if is_positive:
-                    retrieved_pos_count += 1
-                print(f"  {rank+1}. {marker} {retrieved_doc[:100]}... (Score: {top_scores[rank]:.4f})")
-
-            actual_pos_docs = ground_truth.get(query, set())
-            print(f"\nℹ️  Summary: Found {retrieved_pos_count}/{len(actual_pos_docs)} ground truth positives in Top 5.")
+# --- EVALUATION (moved to evaluation package) ---
 
 # --- MAIN ---
 
@@ -404,8 +278,15 @@ def main():
             avg_train_loss = total_loss / len(train_loader)
             print(f"✅ Epoch {epoch+1} Summary | Avg Train Loss: {avg_train_loss:.4f}")
             
-            metrics, avg_val_loss = evaluate(model, val_loader, device, config)
-            print(f"📊 Validation Metrics | Avg Val Loss: {avg_val_loss:.4f} | Metrics: {metrics}")
+            # Use both evaluation methods for comparison
+            batch_evaluator = BatchEvaluator()
+            corpus_evaluator = CorpusEvaluator()
+            
+            metrics, avg_val_loss = batch_evaluator.evaluate(model, val_loader, device, config)
+            full_corpus_metrics = corpus_evaluator.evaluate(model, datasets['validation'], tokenizer, device)
+            
+            print(f"📊 Batch-wise Validation | Avg Val Loss: {avg_val_loss:.4f} | Metrics: {metrics}")
+            print(f"🎯 Full-corpus Validation | Metrics: {full_corpus_metrics}")
 
             # Log epoch-level metrics to W&B
             log_data = {
@@ -413,7 +294,12 @@ def main():
                 "avg_train_loss": avg_train_loss,
                 "avg_val_loss": avg_val_loss,
             }
-            log_data.update(metrics)
+            # Add batch-wise metrics with prefix
+            for k, v in metrics.items():
+                log_data[f"batch_{k}"] = v
+            # Add full-corpus metrics with prefix  
+            for k, v in full_corpus_metrics.items():
+                log_data[f"corpus_{k}"] = v
             wandb.log(log_data, step=global_step)
 
             clean_memory()
@@ -428,7 +314,8 @@ def main():
 
     # --- TEST EVALUATION ---
     if datasets.get('test'):
-        run_test_evaluation(model, datasets['test'], tokenizer, device)
+        test_evaluator = TestEvaluator()
+        test_evaluator.evaluate(model, datasets['test'], tokenizer, device)
     else:
         print("\nNo test data found. Skipping test evaluation.")
 

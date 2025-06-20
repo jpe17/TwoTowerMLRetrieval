@@ -258,6 +258,84 @@
       border: 1px solid #70757a;
     }
     
+    /* Alpha Control Styles */
+    .alpha-control-main {
+      max-width: 600px;
+      margin: -10px auto 30px;
+      text-align: center;
+      padding: 20px 20px 15px;
+      background: var(--background-color);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      transition: all 0.3s ease;
+    }
+    .alpha-control-main label {
+      display: block;
+      font-size: 14px;
+      color: var(--text-color);
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+    body.search-mode .alpha-control-main {
+      display: none;
+    }
+
+    .alpha-control-header {
+      display: none; /* Hidden by default */
+      align-items: center;
+      gap: 10px;
+      margin-left: 20px;
+    }
+    body.search-mode .alpha-control-header {
+      display: flex; /* Visible only in search mode */
+    }
+
+    .slider-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .slider-label {
+      font-size: 12px;
+      color: var(--info-color);
+      min-width: 50px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    #alphaSlider, #alphaSliderMain, #alphaSliderHeader {
+      width: 200px;
+      height: 6px;
+      background: var(--border-color);
+      outline: none;
+      cursor: pointer;
+    }
+    #alphaSlider::-webkit-slider-thumb, #alphaSliderMain::-webkit-slider-thumb, #alphaSliderHeader::-webkit-slider-thumb {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #4285f4;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    #alphaSlider::-moz-range-thumb, #alphaSliderMain::-moz-range-thumb, #alphaSliderHeader::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #4285f4;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .alpha-value {
+      font-size: 12px;
+      color: var(--info-color);
+      font-family: 'Courier New', monospace;
+      min-width: 50px;
+      text-align: left;
+    }
+    
     .results-info {
       color: var(--info-color);
       font-size: 14px;
@@ -457,6 +535,17 @@
       <button class="search-btn" onclick="performSearch()">Google Search</button>
       <button class="search-btn">I'm Feeling Lucky</button>
     </div>
+
+    <!-- Alpha Control for Main Page -->
+    <div class="alpha-control-main">
+      <label for="alphaSliderMain">Retrieval Balance:</label>
+      <div class="slider-container">
+        <span class="slider-label">Keyword</span>
+        <input type="range" id="alphaSliderMain" min="0" max="1" step="0.1" value="0.5">
+        <span class="slider-label">Semantic</span>
+      </div>
+      <div class="alpha-value">α = <span id="alphaValueMain">0.5</span></div>
+    </div>
   </div>
 
   <!-- Search mode header -->
@@ -492,6 +581,16 @@
           </svg>
         </div>
       </div>
+    </div>
+    
+    <!-- Alpha Control for Header -->
+    <div class="alpha-control-header">
+      <div class="slider-container">
+        <span class="slider-label">Keyword</span>
+        <input type="range" id="alphaSliderHeader" min="0" max="1" step="0.1" value="0.5">
+        <span class="slider-label">Semantic</span>
+      </div>
+      <div class="alpha-value">α = <span id="alphaValueHeader">0.5</span></div>
     </div>
   </div>
 
@@ -531,6 +630,17 @@
     // Global variable to store current query for highlighting
     let currentQuery = '';
     
+    // Debounce utility to prevent spamming the API while using the slider
+    function debounce(func, delay = 250) {
+      let timeout;
+      return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          func.apply(this, args);
+        }, delay);
+      };
+    }
+    
     // Allow Enter key to trigger search
     document.getElementById('queryInput').addEventListener('keypress', function(e) {
       if (e.key === 'Enter') {
@@ -545,11 +655,49 @@
       }
     });
 
+    // Get alpha controls
+    const alphaSliderMain = document.getElementById('alphaSliderMain');
+    const alphaValueMain = document.getElementById('alphaValueMain');
+    const alphaSliderHeader = document.getElementById('alphaSliderHeader');
+    const alphaValueHeader = document.getElementById('alphaValueHeader');
+
+    const debouncedSearch = debounce((query) => {
+      if (query) {
+        executeSearch(query);
+      }
+    });
+    
+    function syncAlpha(source) {
+        const value = source.value;
+        const formattedValue = parseFloat(value).toFixed(1);
+
+        if (source.id === 'alphaSliderMain') {
+            alphaSliderHeader.value = value;
+        } else {
+            alphaSliderMain.value = value;
+        }
+        
+        alphaValueMain.textContent = formattedValue;
+        alphaValueHeader.textContent = formattedValue;
+
+        // If we are in search mode, re-run the search with the new alpha
+        if (document.body.classList.contains('search-mode')) {
+            debouncedSearch(currentQuery);
+        }
+    }
+
+    alphaSliderMain.addEventListener('input', () => syncAlpha(alphaSliderMain));
+    alphaSliderHeader.addEventListener('input', () => syncAlpha(alphaSliderHeader));
+
     async function performSearch() {
       const query = document.getElementById("queryInput").value.trim();
       if (!query) {
         return;
       }
+
+      // Sync slider value before switching view
+      alphaSliderHeader.value = alphaSliderMain.value;
+      alphaValueHeader.textContent = parseFloat(alphaSliderMain.value).toFixed(1);
 
       // Switch to search mode
       document.body.classList.add('search-mode');
@@ -575,19 +723,23 @@
       document.getElementById("resultsList").innerHTML = "";
       document.getElementById("noResults").style.display = "none";
 
+      // Get current alpha value from the main slider (they are synced)
+      const alphaValue = parseFloat(alphaSliderMain.value);
+
       try {
         const response = await fetch("/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query })
+          body: JSON.stringify({ query, alpha: alphaValue })
         });
         const data = await response.json();
 
         if (data.results && data.results.length > 0) {
           const resultsCount = data.results.length;
           const searchTime = Math.random() * 0.5 + 0.1; // Simulate search time
+          const alphaInfo = data.alpha ? ` • α=${data.alpha.toFixed(1)}` : '';
           document.getElementById("resultsInfo").textContent = 
-            `About ${resultsCount} results (${searchTime.toFixed(2)} seconds)`;
+            `About ${resultsCount} results (${searchTime.toFixed(2)} seconds)${alphaInfo}`;
           
           displayResults(data.results);
         } else {
@@ -604,7 +756,7 @@
       const container = document.getElementById("resultsList");
       
       results.forEach((result, index) => {
-        const { doc, score } = result;
+        const { doc, score, dense_score, tfidf_score } = result;
         
         const resultDiv = document.createElement("div");
         resultDiv.className = "result-item";
@@ -615,6 +767,16 @@
         const highlightedTitle = highlightMatches(truncateText(doc, 80), currentQuery);
         const highlightedSnippet = highlightMatches(truncateText(doc, 300), currentQuery);
         
+        // Create score breakdown if individual scores are available
+        // Ensure score is between 0-1 for percentage display
+        const normalizedScore = Math.max(0, Math.min(1, score));
+        let scoreBreakdown = `Relevance: ${(normalizedScore * 100).toFixed(1)}%`;
+        if (dense_score !== undefined && tfidf_score !== undefined) {
+          const normalizedDense = Math.max(0, Math.min(1, dense_score));
+          const normalizedTfidf = Math.max(0, Math.min(1, tfidf_score));
+          scoreBreakdown += ` (Semantic: ${(normalizedDense * 100).toFixed(1)}%, Keyword: ${(normalizedTfidf * 100).toFixed(1)}%)`;
+        }
+        
         resultDiv.innerHTML = `
           <div class="result-url">
             <div class="result-favicon">🌐</div>
@@ -622,7 +784,7 @@
           </div>
           <a href="#result-${index}" class="result-title" onclick="selectResult(${index})">${highlightedTitle}</a>
           <div class="result-snippet">${highlightedSnippet}</div>
-          <div class="result-score">Relevance: ${(score * 100).toFixed(1)}%</div>
+          <div class="result-score">${scoreBreakdown}</div>
         `;
         
         container.appendChild(resultDiv);

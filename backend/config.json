@@ -5,19 +5,19 @@
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
     
-    "SUBSAMPLE_RATIO": 0.01,
+    "SUBSAMPLE_RATIO": 0.1,
     "NUM_TRIPLETS_PER_QUERY": 1,
     "TRAINING_MODE": "retrieval",
     
-    "HIDDEN_DIM": 128,
+    "HIDDEN_DIM": 256,
     "RNN_TYPE": "GRU",
-    "NUM_LAYERS": 1,
+    "NUM_LAYERS": 2,
     "BIDIRECTIONAL": true,
     "DROPOUT": 0.2,
     
-    "BATCH_SIZE": 64,
-    "EPOCHS": 2,
-    "LR": 0.0005,
+    "BATCH_SIZE": 128,
+    "EPOCHS": 10,
+    "LR": 0.00005,
     
     "MARGIN": 0.3,
     "NORMALIZE_OUTPUT": true
