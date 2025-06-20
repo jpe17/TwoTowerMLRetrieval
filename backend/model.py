@@ -24,6 +24,7 @@ class RNNEncoder(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
         if pretrained_embeddings is not None:
             self.embedding.weight.data.copy_(torch.from_numpy(pretrained_embeddings))
+            self.embedding.weight.requires_grad = False  # Prevent updates to the embeddings
         
         self.bidirectional = bidirectional
         rnn_class = getattr(nn, rnn_type.upper())

@@ -4,8 +4,10 @@
     "TEST_DATASET_PATH": "data/ms_marco_test.parquet",
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
+    "ARTIFACTS_PATH": "../artifacts/run-20250619_232020",
+
     
-    "SUBSAMPLE_RATIO": 0.1,
+    "SUBSAMPLE_RATIO": 0.005,
     "NUM_TRIPLETS_PER_QUERY": 1,
     "TRAINING_MODE": "retrieval",
     
@@ -15,10 +17,10 @@
     "BIDIRECTIONAL": true,
     "DROPOUT": 0.2,
     
-    "BATCH_SIZE": 128,
-    "EPOCHS": 10,
+    "BATCH_SIZE": 64,
+    "EPOCHS": 1,
     "LR": 0.00005,
     
-    "MARGIN": 0.3,
+    "MARGIN": 0.5,
     "NORMALIZE_OUTPUT": true
 } 

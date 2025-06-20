@@ -14,15 +14,11 @@ from pathlib import Path
 import sys
 import os
 import gc
-import random
 import argparse
 import pickle
 import shutil
 from sklearn.feature_extraction.text import TfidfVectorizer
 import wandb
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 
 # Add backend to path for imports
 sys.path.append(str(Path(__file__).parent))
@@ -156,9 +152,6 @@ def save_inference_artifacts(output_dir: Path, model: TwoTowerModel, config: Dic
     print("  ✅ Saved TF-IDF vectorizer and document matrix.")
     print(f"✅ Artifacts ready for frontend use.")
 
-# --- EVALUATION ---
-
-# --- EVALUATION (moved to evaluation package) ---
 
 # --- MAIN ---
 

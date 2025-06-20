@@ -121,55 +121,89 @@ def search(input: QueryInput):
     start = time.time()
     alpha = input.alpha
     
-    # Step 1: Get top 50 documents via semantic similarity
-    query_embedding = inferencer.get_query_embedding(input.query)
-    semantic_results = collection.query(
-        query_embeddings=[query_embedding.tolist()], 
-        n_results=50
-    )
-    
-    top_docs = semantic_results["documents"][0]
-    semantic_distances = semantic_results["distances"][0]
-    
-    # Step 2: Compute semantic scores (0-1)
-    semantic_scores = [1 - dist for dist in semantic_distances]
-    
-    # Step 3: Compute TF-IDF scores for those 50 documents
-    query_tfidf = tfidf_vectorizer.transform([input.query])
-    tfidf_scores = []
-    
-    for doc in top_docs:
-        doc_idx = doc_to_index.get(doc)
-        if doc_idx is not None:
-            # Use pre-computed TF-IDF matrix
-            tfidf_score = cosine_similarity(query_tfidf, doc_tfidf_matrix[doc_idx:doc_idx+1])[0][0]
-        else:
-            # Compute on-the-fly if not in index
-            doc_tfidf = tfidf_vectorizer.transform([doc])
-            tfidf_score = cosine_similarity(query_tfidf, doc_tfidf)[0][0]
-        tfidf_scores.append(float(tfidf_score))  # Ensure float conversion
-    
-    # Debug: Print score ranges
-    print(f"🔍 Semantic scores range: {min(semantic_scores):.3f} - {max(semantic_scores):.3f}")
-    print(f"🔍 TF-IDF scores range: {min(tfidf_scores):.3f} - {max(tfidf_scores):.3f}")
-    
-    # Step 4: Calculate final scores using alpha
-    results = []
-    for i, doc in enumerate(top_docs):
-        semantic_score = float(semantic_scores[i])
-        tfidf_score = float(tfidf_scores[i])
-        final_score = alpha * semantic_score + (1 - alpha) * tfidf_score
+    # --- Execute Search ---
+    # If alpha is 0, perform a pure, corpus-wide keyword search.
+    # Otherwise, use the existing hybrid semantic search + keyword re-ranking.
+    if alpha == 0.0:
+        print("⚖️ Performing pure keyword search (alpha=0)...")
+        query_tfidf = tfidf_vectorizer.transform([input.query])
         
-        results.append({
-            "doc": doc,
-            "score": float(final_score),
-            "dense_score": semantic_score,
-            "tfidf_score": tfidf_score
-        })
-    
-    # Step 5: Sort by final score and return top 10
-    results.sort(key=lambda x: x["score"], reverse=True)
-    top_10 = results[:10]
+        # Calculate similarity against all documents in the corpus
+        all_sims = cosine_similarity(query_tfidf, doc_tfidf_matrix).flatten()
+        
+        # Get top 10 results directly. argpartition is faster than argsort for this.
+        n_results = 10
+        if len(all_sims) > n_results:
+            # Get indices of the top N scores
+            top_indices = np.argpartition(all_sims, -n_results)[-n_results:]
+            # Sort only the top N scores to get the correct order
+            sorted_top_indices = top_indices[np.argsort(all_sims[top_indices])[::-1]]
+        else:
+            sorted_top_indices = np.argsort(all_sims)[::-1]
+
+        results = []
+        for idx in sorted_top_indices:
+            score = all_sims[idx]
+            # Only include results with an actual keyword match
+            if score > 1e-5:
+                results.append({
+                    "doc": all_documents_list[idx],
+                    "score": float(score),
+                    "dense_score": 0.0,  # No semantic component
+                    "tfidf_score": float(score)
+                })
+        top_10 = results
+
+    else:
+        print(f"🧬 Performing hybrid search (alpha={alpha})...")
+        # Step 1: Get top 50 documents via semantic similarity
+        query_embedding = inferencer.get_query_embedding(input.query)
+        semantic_results = collection.query(
+            query_embeddings=[query_embedding.tolist()], 
+            n_results=50
+        )
+        
+        top_docs = semantic_results["documents"][0]
+        semantic_distances = semantic_results["distances"][0]
+        
+        # Step 2: Compute semantic scores (0-1)
+        semantic_scores = [1 - dist for dist in semantic_distances]
+        
+        # Step 3: Compute TF-IDF scores for the top 50 documents
+        tfidf_scores = []
+        query_tfidf = tfidf_vectorizer.transform([input.query])
+
+        # Check if the query has any terms in our vocabulary
+        if query_tfidf.nnz > 0:
+            doc_tfidfs = tfidf_vectorizer.transform(top_docs)
+            all_sims = cosine_similarity(query_tfidf, doc_tfidfs)
+            tfidf_scores = np.nan_to_num(all_sims[0]).tolist()
+        else:
+            print(f"⚠️  Query '{input.query}' contains no words in the TF-IDF vocabulary.")
+            tfidf_scores = [0.0] * len(top_docs)
+        
+        # Debug: Print score ranges
+        print(f"🔍 Semantic scores range: {min(semantic_scores):.3f} - {max(semantic_scores):.3f}")
+        if tfidf_scores:
+            print(f"🔍 TF-IDF scores range: {min(tfidf_scores):.3f} - {max(tfidf_scores):.3f}")
+        
+        # Step 4: Calculate final scores using alpha
+        results = []
+        for i, doc in enumerate(top_docs):
+            semantic_score = float(semantic_scores[i])
+            tfidf_score = float(tfidf_scores[i])
+            final_score = alpha * semantic_score + (1 - alpha) * tfidf_score
+            
+            results.append({
+                "doc": doc,
+                "score": float(final_score),
+                "dense_score": semantic_score,
+                "tfidf_score": tfidf_score
+            })
+        
+        # Step 5: Sort by final score and return top 10
+        results.sort(key=lambda x: x["score"], reverse=True)
+        top_10 = results[:10]
     
     elapsed = (time.time() - start) * 1000
     print(f"⚡ Search completed in {elapsed:.1f}ms")
@@ -183,8 +217,5 @@ def search(input: QueryInput):
         ]
     }
 
-
-
-    #return {"query": input.query, "results": list(zip(ids, docs))}
 
 

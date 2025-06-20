@@ -17,7 +17,7 @@ class BatchEvaluator:
     
     def evaluate(self, model, val_loader, device: torch.device, config: Dict):
         """Evaluates the model on validation batches, returning metrics and validation loss."""
-        from .model import triplet_loss_cosine  # Import here to avoid circular imports
+        from model import triplet_loss_cosine  # Import here to avoid circular imports
         
         model.eval()
         all_query_embs, all_doc_embs = [], []
