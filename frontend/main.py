@@ -110,78 +110,76 @@ async def serve_frontend():
 @app.post("/search")
 def search(input: QueryInput):
     """
-    Performs a simplified and robust hybrid search.
-    1. Retrieves top candidates from both dense (semantic) and sparse (keyword) retrievers.
-    2. Creates a unified pool of candidates.
-    3. Re-ranks the entire pool using a weighted average of dense and sparse scores.
+    Ultra-fast hybrid search (millisecond response):
+    1. Get top 20 semantic + keyword candidates
+    2. Score with fast operations only
+    3. Return top 10 results
     """
-    hybrid_alpha = input.alpha
-    n_candidates = 20  # Number of candidates to fetch from each retriever
-    top_k = 10         # Final number of results to return
-
-    # --- Stage 1: Candidate Retrieval ---
+    import time
+    start = time.time()
+    alpha = input.alpha
     
-    # 1a. DENSE retrieval (ChromaDB for semantic search)
+    # --- Get candidates from both methods ---
+    # Semantic candidates (ANN)
     query_embedding = inferencer.get_query_embedding(input.query)
-    dense_results = collection.query(
-        query_embeddings=[query_embedding.tolist()],
-        n_results=n_candidates
+    semantic_results = collection.query(
+        query_embeddings=[query_embedding.tolist()], 
+        n_results=20
     )
-    dense_docs = dense_results.get("documents", [[]])[0]
-    dense_distances = dense_results.get("distances", [[]])[0]
-    dense_candidates = {doc: (1 - dist) for doc, dist in zip(dense_docs, dense_distances)}
-
-    # 1b. SPARSE retrieval (TF-IDF for keyword search)
+    
+    # Keyword candidates (TF-IDF)
     query_tfidf = tfidf_vectorizer.transform([input.query])
-    all_tfidf_scores = cosine_similarity(query_tfidf, doc_tfidf_matrix)[0]
-    top_sparse_indices = np.argsort(all_tfidf_scores)[::-1][:n_candidates]
-    sparse_docs = {all_documents_list[i] for i in top_sparse_indices}
-
-    # 1c. Create a unified candidate pool from both retrievers
-    all_candidate_docs = set(dense_candidates.keys()) | sparse_docs
-
-    if not all_candidate_docs:
-        return {"query": input.query, "results": []}
-
-    # --- Stage 2: Re-ranking ---
-    hybrid_results = []
-    for doc_text in all_candidate_docs:
-        # Get dense score (use its value or 0 if it wasn't a dense candidate)
-        dense_score = dense_candidates.get(doc_text, 0.0)
-        
-        # Get sparse score for the document by looking it up in the pre-computed array
-        doc_idx = doc_to_index.get(doc_text)
-        tfidf_score = all_tfidf_scores[doc_idx] if doc_idx is not None else 0.0
-        
-        # Combine scores using dynamic alpha
-        combined_score = hybrid_alpha * dense_score + (1 - hybrid_alpha) * tfidf_score
-
-        hybrid_results.append({
-            "doc": doc_text,
-            "score": float(combined_score),
-            "dense_score": float(dense_score),
-            "tfidf_score": float(tfidf_score)
+    tfidf_scores = cosine_similarity(query_tfidf, doc_tfidf_matrix)[0]
+    top_tfidf_idx = np.argsort(tfidf_scores)[::-1][:20]
+    
+    # --- Combine and score all candidates ---
+    candidates = {}
+    
+    # Add semantic candidates with their scores
+    for doc, dist in zip(semantic_results["documents"][0], semantic_results["distances"][0]):
+        candidates[doc] = {"semantic": 1-dist, "tfidf": 0.0}
+    
+    # Add TF-IDF candidates with their scores  
+    for idx in top_tfidf_idx:
+        doc = all_documents_list[idx]
+        tfidf_score = tfidf_scores[idx]
+        if doc in candidates:
+            candidates[doc]["tfidf"] = tfidf_score
+        else:
+            candidates[doc] = {"semantic": 0.0, "tfidf": tfidf_score}
+    
+    # Skip missing semantic scores for speed - they stay 0.0
+    
+    # Fill missing TF-IDF scores
+    for doc, scores in candidates.items():
+        if scores["tfidf"] == 0.0:
+            doc_idx = doc_to_index.get(doc)
+            if doc_idx is not None:
+                candidates[doc]["tfidf"] = tfidf_scores[doc_idx]
+    
+    # --- Rank and return ---
+    results = []
+    for doc, scores in candidates.items():
+        combined = alpha * scores["semantic"] + (1-alpha) * scores["tfidf"]
+        results.append({
+            "doc": doc,
+            "score": combined,
+            "dense_score": scores["semantic"],
+            "tfidf_score": scores["tfidf"]
         })
-
-    # CRITICAL: Sort by the new hybrid score to get the final top results
-    hybrid_results.sort(key=lambda x: x["score"], reverse=True)
-    top_k_results = hybrid_results[:top_k]
-
-    # --- Stage 3: Formatting ---
-    final_results = []
-    for i, res in enumerate(top_k_results, start=1):
-        final_results.append({
-            "rank": i, "id": f"hybrid-result-{i}", "doc": res["doc"],
-            "score": res["score"], "dense_score": res["dense_score"], "tfidf_score": res["tfidf_score"]
-        })
-
-    print(f"Query: '{input.query}' (α={hybrid_alpha:.2f}) -> "
-          f"Found {len(final_results)} results from a pool of {len(all_candidate_docs)}.")
-
+    
+    results.sort(key=lambda x: x["score"], reverse=True)
+    
+    elapsed = (time.time() - start) * 1000  # Convert to milliseconds
+    print(f"⚡ Search completed in {elapsed:.1f}ms")
+    
     return {
         "query": input.query,
-        "alpha": hybrid_alpha,
-        "results": final_results
+        "alpha": alpha,
+        "results": [
+            {"rank": i+1, "id": f"result-{i+1}", **res} 
+            for i, res in enumerate(results[:10])
+        ]
     }
 
 
