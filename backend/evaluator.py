@@ -13,6 +13,7 @@ from typing import Dict, Optional
 from sklearn.metrics import ndcg_score
 from collections import defaultdict
 from tqdm import tqdm
+import faiss
 
 
 class SimpleEvaluator:
@@ -596,6 +597,87 @@ class AdvancedEvaluator:
             })
 
         # Aggregate metrics
+        metrics = {
+            'precision@k': np.mean([m['precision@k'] for m in all_query_metrics]),
+            'recall@k': np.mean([m['recall@k'] for m in all_query_metrics]),
+            'mrr': np.mean([m['mrr'] for m in all_query_metrics]),
+            'ndcg@k': np.mean([m['ndcg@k'] for m in all_query_metrics]),
+        }
+        return metrics, all_top_results
+
+    def evaluate_with_precomputed_doc_embeddings_ann(
+        self,
+        triplets,
+        doc_embeddings,
+        idx_to_doc,
+        top_k=5
+    ):
+
+        # Build mapping: query -> set of positive docs
+        query_to_positives = defaultdict(set)
+        for query, pos_doc, neg_doc in triplets:
+            query_to_positives[query].add(pos_doc)
+
+        # Ensure embeddings are float32 and contiguous
+        doc_embeddings = np.ascontiguousarray(doc_embeddings.astype('float32'))
+
+        # Build FAISS index
+        dim = doc_embeddings.shape[1]
+        index = faiss.IndexFlatIP(dim)  # Inner product (cosine if normalized)
+        faiss.normalize_L2(doc_embeddings)  # Normalize for cosine similarity
+        index.add(doc_embeddings)
+
+        all_query_metrics = []
+        all_top_results = []
+
+        doc_to_idx = {doc: idx for idx, doc in enumerate(idx_to_doc)}
+
+        for query in tqdm(query_to_positives, desc="Evaluating unique queries (FAISS)"):
+            positives = query_to_positives[query]
+            query_tokens = self.tokenizer.encode(query)
+            if not query_tokens:
+                continue
+            query_tensor = torch.tensor(query_tokens, dtype=torch.long).unsqueeze(0).to(self.device)
+            with torch.no_grad():
+                query_embedding = self.model.encode_query(query_tensor).cpu().numpy().astype('float32')
+            faiss.normalize_L2(query_embedding)
+
+            # Search top_k
+            D, I = index.search(query_embedding, top_k)
+            top_k_indices = I[0]
+            top_k_scores = D[0]
+            top_k_docs = [idx_to_doc[i] for i in top_k_indices]
+            is_correct = [doc in positives for doc in top_k_docs]
+
+            # Metrics
+            precision_at_k = sum(is_correct) / top_k
+            recall_at_k = sum(is_correct) / len(positives) if positives else 0.0
+            mrr = 0.0
+            for rank, doc in enumerate(top_k_docs, 1):
+                if doc in positives:
+                    mrr = 1.0 / rank
+                    break
+            ndcg = 0.0
+            for i, doc in enumerate(top_k_docs):
+                if doc in positives:
+                    ndcg = 1.0 / np.log2(i + 2)
+                    break
+
+            all_query_metrics.append({
+                'precision@k': precision_at_k,
+                'recall@k': recall_at_k,
+                'mrr': mrr,
+                'ndcg@k': ndcg,
+                'query': query
+            })
+            all_top_results.append({
+                'query': query,
+                'top_docs': top_k_docs,
+                'top_scores': [float(s) for s in top_k_scores],
+                'is_correct': is_correct,
+                'actual_positive_docs': list(positives)
+            })
+
         metrics = {
             'precision@k': np.mean([m['precision@k'] for m in all_query_metrics]),
             'recall@k': np.mean([m['recall@k'] for m in all_query_metrics]),

@@ -54,7 +54,7 @@ def main():
     evaluator = AdvancedEvaluator(model, tokenizer, device, top_k=5)
 
     # Evaluate using precomputed doc embeddings
-    metrics, top_results = evaluator.evaluate_with_precomputed_doc_embeddings(
+    metrics, top_results = evaluator.evaluate_with_precomputed_doc_embeddings_ann(
         test_triplets, doc_embeddings, idx_to_doc, top_k=5
     )
 

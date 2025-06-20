@@ -10,7 +10,7 @@
     "MARGIN": 0.5,
     "BATCH_SIZE": 512,
     "EPOCHS": 5,
-    "DEVICE": "cuda",
+    "DEVICE": "cpu",
     "NUM_LAYERS": 2,
     "MEMORY_CLEANUP_FREQUENCY": 50,
     "TASK_MODE": "retrieval",
