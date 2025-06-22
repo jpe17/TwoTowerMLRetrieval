@@ -9,3 +9,4 @@ venv/
 frontend/chroma_store
 .DS_Store
 frontend/__pycache__
+~
