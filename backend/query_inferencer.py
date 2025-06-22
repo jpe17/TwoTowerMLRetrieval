@@ -3,9 +3,16 @@ import numpy as np
 import json
 from pathlib import Path
 import sys
+import json
+
+def load_config(path: str):
+    """Loads a JSON config file."""
+    with open(path, 'r') as f:
+        return json.load(f)
 
 # Add backend to path for imports
 sys.path.append(str(Path(__file__).parent))
+config = load_config('frontend/config.json')
 
 from tokenizer import PretrainedTokenizer
 from model import TwoTowerModel
@@ -76,11 +83,7 @@ class QueryInferencer:
 
 if __name__ == '__main__':
     # --- Example Usage ---
-    # This assumes you have a saved model in the specified directory
-    # You would typically run this after a training run from backend/main.py
-    
-    # IMPORTANT: Update this path to your latest run directory
-    ARTIFACTS_PATH = "artifacts/run_20240101_120000" # Replace with your actual run directory
+    ARTIFACTS_PATH = config['ARTIFACTS_PATH']
     
     if not Path(ARTIFACTS_PATH).exists():
         print(f"Error: Artifacts directory not found at '{ARTIFACTS_PATH}'")

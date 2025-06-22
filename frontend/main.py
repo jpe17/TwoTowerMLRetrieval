@@ -18,25 +18,17 @@ sys.path.append(str(PROJECT_DIR / "backend"))
 
 # This now imports our custom, simplified inferencer
 from query_inferencer import QueryInferencer 
+import json
 
+def load_config(path: str):
+    """Loads a JSON config file."""
+    with open(path, 'r') as f:
+        return json.load(f)
+
+config = load_config('frontend/config.json')
 import chromadb
 
-# --- CONFIGURATION ---
-# IMPORTANT: Now dynamically finds the latest artifacts directory
-def find_latest_artifacts():
-    artifacts_base = PROJECT_DIR / "artifacts"
-    if not artifacts_base.exists():
-        return None
-    
-    # Find all run directories
-    run_dirs = [d for d in artifacts_base.iterdir() if d.is_dir() and d.name.startswith('run')]
-    if not run_dirs:
-        return None
-    
-    # Return the most recent one
-    return max(run_dirs, key=lambda x: x.stat().st_mtime)
-
-ARTIFACTS_PATH = find_latest_artifacts()
+ARTIFACTS_PATH = config['ARTIFACTS_PATH']
 if ARTIFACTS_PATH is None:
     print("FATAL: No artifacts directory found. Please train a model first.")
     sys.exit(1)
