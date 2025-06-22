@@ -6,6 +6,8 @@ The deployed application allows users to search a corpus of documents, and fine-
 
 ![Alt text](images/google_with_tuning_params.png)
 
+![Alt text](images/search_results.png)
+
 [View Presentation](https://docs.google.com/presentation/d/1Tdd9lnQoZY9aF4NRnQKUcWXarUg3Zc0N1OtdVgev1ow/edit?usp=sharing)
 
 
