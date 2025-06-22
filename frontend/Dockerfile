@@ -16,6 +16,7 @@ COPY backend/ ./backend/
 # Copy necessary frontend files
 COPY frontend/main.py ./frontend/
 COPY frontend/index.html ./frontend/
+COPY frontend/config.json ./frontend/
 COPY frontend/chroma_store/ ./frontend/chroma_store/
 
 # Copy the specific artifacts run (as specified in backend config)
