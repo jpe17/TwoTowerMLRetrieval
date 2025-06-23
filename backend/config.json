@@ -4,7 +4,6 @@
     "TEST_DATASET_PATH": "data/ms_marco_test.parquet",
     "EMBEDDINGS_PATH": "data/embeddings.npy",
     "WORD_TO_IDX_PATH": "data/word_to_idx.pkl",
-    "ARTIFACTS_PATH": "../artifacts/run-20250619_232020",
 
     
     "SUBSAMPLE_RATIO": 0.005,
